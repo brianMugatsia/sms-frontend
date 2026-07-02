@@ -5,8 +5,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // AXIOS INSTANCE
 // ======================================
 export const api = axios.create({
-  baseURL: "https://sms-backend-w6d5.onrender.com/api", //  correct for emulator
-  timeout: 30000,
+  baseURL: "https://sms-backend-w6d5.onrender.com/api", // correct for emulator/physical device
+  timeout: 60000, // allow longer timeout for Render spin-up
 });
 
 // ======================================
@@ -43,17 +43,14 @@ api.interceptors.request.use(
 // ======================================
 export const login = async (username: string, password: string) => {
   try {
-    //  FastAPI OAuth2PasswordRequestForm expects form-encoded data
-    const payload = new URLSearchParams({
-      username,
-      password,
-    });
+    // FastAPI OAuth2PasswordRequestForm expects form-encoded data
+    const payload = new URLSearchParams({ username, password });
 
     console.log("Login payload:", payload.toString());
 
     const res = await api.post("/users/login", payload, {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      responseType: "json", //  force JSON parsing
+      responseType: "json",
     });
 
     await setToken(res.data.access_token);
@@ -69,6 +66,45 @@ export const login = async (username: string, password: string) => {
     throw error;
   }
 };
+
+// ======================================
+// REFRESH TOKEN
+// ======================================
+export const refreshToken = async () => {
+  try {
+    const res = await api.post("/users/refresh");
+    await setToken(res.data.access_token);
+    return res.data.access_token;
+  } catch (err) {
+    console.error("Token refresh failed:", err);
+    await removeToken();
+    throw err;
+  }
+};
+
+// ======================================
+// RESPONSE INTERCEPTOR (auto-refresh)
+// ======================================
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const newToken = await refreshToken();
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        console.error("Refresh failed, logging out");
+        return Promise.reject(refreshError);
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 // ======================================
 // SMS

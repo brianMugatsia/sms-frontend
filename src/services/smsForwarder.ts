@@ -1,26 +1,33 @@
 import { PermissionsAndroid, Platform } from "react-native";
 import SmsListener from "react-native-android-sms-listener";
-import { forwardSms } from "./api";
+import DeviceInfo from "react-native-device-info";
 
-const DEVICE_ID = "Pixel_5";
+import { forwardSms } from "./api";
+import { shouldForward } from "./filterService";
+
+let smsSubscription: any = null;
 
 export const requestSmsPermissions = async (): Promise<boolean> => {
   if (Platform.OS !== "android") {
+    console.log("Not an Android device");
     return false;
   }
 
   try {
-    const receiveSms = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.RECEIVE_SMS
-    );
+    console.log("Requesting SMS permissions...");
 
-    const readSms = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.READ_SMS
-    );
+    const permissions = await PermissionsAndroid.requestMultiple([
+      PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
+      PermissionsAndroid.PERMISSIONS.READ_SMS,
+    ]);
+
+    console.log("Permissions:", permissions);
 
     return (
-      receiveSms === PermissionsAndroid.RESULTS.GRANTED &&
-      readSms === PermissionsAndroid.RESULTS.GRANTED
+      permissions[PermissionsAndroid.PERMISSIONS.RECEIVE_SMS] ===
+        PermissionsAndroid.RESULTS.GRANTED &&
+      permissions[PermissionsAndroid.PERMISSIONS.READ_SMS] ===
+        PermissionsAndroid.RESULTS.GRANTED
     );
   } catch (error) {
     console.error("Permission request failed:", error);
@@ -29,6 +36,14 @@ export const requestSmsPermissions = async (): Promise<boolean> => {
 };
 
 export const startSmsForwarding = async () => {
+  console.log("========== STARTING SMS FORWARDER ==========");
+
+  // Prevent duplicate listeners
+  if (smsSubscription) {
+    console.log("SMS listener already running");
+    return smsSubscription;
+  }
+
   const granted = await requestSmsPermissions();
 
   if (!granted) {
@@ -36,35 +51,64 @@ export const startSmsForwarding = async () => {
     return null;
   }
 
-  console.log("SMS forwarding started");
+  let deviceName = "Android Device";
 
-  const subscription = SmsListener.addListener(async (message) => {
-    console.log("New SMS received:", {
-      sender: message.originatingAddress,
-      body: message.body,
-    });
+  try {
+    deviceName = await DeviceInfo.getDeviceName();
+  } catch (error) {
+    console.warn("Unable to obtain device name");
+  }
+
+  console.log("Device:", deviceName);
+
+  console.log("Registering SMS listener...");
+
+  smsSubscription = SmsListener.addListener(async (message) => {
+    console.log("========== SMS RECEIVED ==========");
+    console.log(message);
+
+    const sender = message.originatingAddress ?? "Unknown";
+    const body = message.body ?? "";
 
     try {
-      await forwardSms({
-        sender: message.originatingAddress ?? "Unknown",
-        message: message.body ?? "",
-        device_id: DEVICE_ID,
+      const allowed = await shouldForward({
+        sender,
+        body,
       });
 
+      if (!allowed) {
+        console.log("SMS blocked by forwarding rules");
+        return;
+      }
+
+      console.log("Forwarding SMS to backend...");
+
+      const response = await forwardSms({
+        sender,
+        message: body,
+        device_id: deviceName,
+      });
+
+      console.log("Backend response:", response);
       console.log("SMS forwarded successfully");
     } catch (error) {
-      console.error("Error forwarding SMS:", error);
+      console.error("Forwarding failed:", error);
     }
   });
 
-  return subscription;
+  console.log("SMS listener registered successfully");
+
+  return smsSubscription;
 };
 
-export const stopSmsForwarding = (subscription: any) => {
+export const stopSmsForwarding = () => {
   try {
-    subscription?.remove();
-    console.log("SMS forwarding stopped");
+    if (smsSubscription) {
+      smsSubscription.remove();
+      smsSubscription = null;
+      console.log("SMS forwarding stopped");
+    }
   } catch (error) {
-    console.error("Error stopping SMS forwarding:", error);
+    console.error("Error stopping listener:", error);
   }
 };

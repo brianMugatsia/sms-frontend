@@ -1,64 +1,94 @@
 import React from "react";
-import { FlatList, Text, TouchableOpacity, View } from "react-native";
+import {
+  FlatList,
+  View,
+  Text,
+  RefreshControl,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import SmsItem from "./SmsItem";
 import { Sms } from "../types/sms";
+
+interface Props {
+  messages: Sms[];
+  onToggleRead?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  refreshControl?: React.ReactElement<typeof RefreshControl>;
+}
 
 export default function SmsList({
   messages,
   onToggleRead,
   onDelete,
   refreshControl,
-}: {
-  messages: Sms[];
-  onToggleRead?: (id: string) => void;
-  onDelete?: (id: string) => void;
-  refreshControl?: React.ReactElement;
-}) {
-  const safeMessages = messages
-    ?.filter((m) => m && m.id)
-    .sort((a, b) => {
-      const timeA = new Date(a.timestamp).getTime();
-      const timeB = new Date(b.timestamp).getTime();
-      return timeB - timeA; // newest first
-    });
+}: Props) {
+  const safeMessages = [...messages].sort((a, b) => {
+    const aTime = a.timestamp
+      ? new Date(a.timestamp).getTime()
+      : 0;
 
-  const renderRightActions = (id: string) => (
-    <View style={{ flexDirection: "row" }}>
-      <TouchableOpacity
-        onPress={() => onToggleRead?.(id)}
+    const bTime = b.timestamp
+      ? new Date(b.timestamp).getTime()
+      : 0;
+
+    return bTime - aTime;
+  });
+
+  if (safeMessages.length === 0) {
+    return (
+      <View
         style={{
-          backgroundColor: "#007AFF",
-          justifyContent: "center",
           alignItems: "center",
-          width: 80,
+          justifyContent: "center",
+          padding: 50,
         }}
       >
-        <Text style={{ color: "#fff" }}>Toggle</Text>
-      </TouchableOpacity>
+        <Text style={{ fontSize: 70 }}>
+          📭
+        </Text>
 
-      <TouchableOpacity
-        onPress={() => onDelete?.(id)}
-        style={{
-          backgroundColor: "red",
-          justifyContent: "center",
-          alignItems: "center",
-          width: 80,
-        }}
-      >
-        <Text style={{ color: "#fff" }}>Delete</Text>
-      </TouchableOpacity>
-    </View>
-  );
+        <Text
+          style={{
+            fontSize: 20,
+            fontWeight: "700",
+            marginTop: 10,
+          }}
+        >
+          No Messages
+        </Text>
+
+        <Text
+          style={{
+            color: "#666",
+            marginTop: 8,
+            textAlign: "center",
+          }}
+        >
+          Incoming SMS messages will appear here.
+        </Text>
+      </View>
+    );
+  }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f9f9f9" }}>
+    <SafeAreaView
+      style={{
+        flex: 1,
+        marginTop: 10,
+      }}
+    >
       <FlatList
         data={safeMessages}
-        keyExtractor={(item, index) =>
-          item?.id?.toString() ?? index.toString()
-        }
+        keyExtractor={(item) => item.id}
+        refreshControl={refreshControl}
+        contentContainerStyle={{
+          paddingBottom: 40,
+          paddingHorizontal: 10,
+        }}
+        ItemSeparatorComponent={() => (
+          <View style={{ height: 10 }} />
+        )}
         renderItem={({ item }) => (
           <SmsItem
             sms={item}
@@ -66,8 +96,7 @@ export default function SmsList({
             onDelete={onDelete}
           />
         )}
-        contentContainerStyle={{ paddingVertical: 8 }}
-        refreshControl={refreshControl}
+        showsVerticalScrollIndicator={false}
       />
     </SafeAreaView>
   );

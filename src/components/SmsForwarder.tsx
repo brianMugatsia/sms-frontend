@@ -6,16 +6,10 @@ import {
 
 export default function SmsForwarder() {
   useEffect(() => {
-    let subscription: any;
-
-    const init = async () => {
-      subscription = await startSmsForwarding();
-    };
-
-    init();
+    startSmsForwarding();
 
     return () => {
-      stopSmsForwarding(subscription);
+      stopSmsForwarding();
     };
   }, []);
 
