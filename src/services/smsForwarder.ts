@@ -1,8 +1,9 @@
 import { PermissionsAndroid, Platform } from "react-native";
 import SmsListener from "react-native-android-sms-listener";
 import DeviceInfo from "react-native-device-info";
-
-import { forwardSms } from "./api";
+import { enqueueSMS } from "./smsQueueService";
+import { monitorQueue } from "./monitorService";
+import { syncPendingSMS } from "./syncService";
 import { shouldForward } from "./filterService";
 
 let smsSubscription: any = null;
@@ -73,7 +74,7 @@ export const startSmsForwarding = async () => {
     try {
       const allowed = await shouldForward({
         sender,
-        body,
+
       });
 
       if (!allowed) {
@@ -81,16 +82,18 @@ export const startSmsForwarding = async () => {
         return;
       }
 
-      console.log("Forwarding SMS to backend...");
+      console.log("Queueing SMS...");
 
-      const response = await forwardSms({
+      await enqueueSMS({
         sender,
         message: body,
         device_id: deviceName,
       });
+      await monitorQueue();
 
-      console.log("Backend response:", response);
-      console.log("SMS forwarded successfully");
+      console.log("SMS queued successfully");
+
+      await syncPendingSMS();
     } catch (error) {
       console.error("Forwarding failed:", error);
     }

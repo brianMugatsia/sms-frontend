@@ -15,6 +15,8 @@ interface Props {
   onToggleRead?: (id: string) => void;
   onDelete?: (id: string) => void;
   refreshControl?: React.ReactElement<typeof RefreshControl>;
+  ListHeaderComponent?: React.ComponentType<any> | React.ReactElement | null;
+  ListEmptyComponent?: React.ComponentType<any> | React.ReactElement | null;
 }
 
 export default function SmsList({
@@ -22,6 +24,8 @@ export default function SmsList({
   onToggleRead,
   onDelete,
   refreshControl,
+  ListHeaderComponent,
+  ListEmptyComponent,
 }: Props) {
   const safeMessages = [...messages].sort((a, b) => {
     const aTime = a.timestamp
@@ -35,48 +39,46 @@ export default function SmsList({
     return bTime - aTime;
   });
 
-  if (safeMessages.length === 0) {
-    return (
-      <View
+  const defaultEmpty = (
+    <View
+      style={{
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 50,
+      }}
+    >
+      <Text style={{ fontSize: 70 }}>
+        📭
+      </Text>
+
+      <Text
         style={{
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 50,
+          fontSize: 20,
+          fontWeight: "700",
+          marginTop: 10,
         }}
       >
-        <Text style={{ fontSize: 70 }}>
-          📭
-        </Text>
+        No Messages
+      </Text>
 
-        <Text
-          style={{
-            fontSize: 20,
-            fontWeight: "700",
-            marginTop: 10,
-          }}
-        >
-          No Messages
-        </Text>
-
-        <Text
-          style={{
-            color: "#666",
-            marginTop: 8,
-            textAlign: "center",
-          }}
-        >
-          Incoming SMS messages will appear here.
-        </Text>
-      </View>
-    );
-  }
+      <Text
+        style={{
+          color: "#666",
+          marginTop: 8,
+          textAlign: "center",
+        }}
+      >
+        Incoming SMS messages will appear here.
+      </Text>
+    </View>
+  );
 
   return (
     <SafeAreaView
       style={{
         flex: 1,
-        marginTop: 10,
       }}
+      edges={["left", "right"]}
     >
       <FlatList
         data={safeMessages}
@@ -85,7 +87,10 @@ export default function SmsList({
         contentContainerStyle={{
           paddingBottom: 40,
           paddingHorizontal: 10,
+          flexGrow: 1,
         }}
+        ListHeaderComponent={ListHeaderComponent}
+        ListEmptyComponent={ListEmptyComponent ?? defaultEmpty}
         ItemSeparatorComponent={() => (
           <View style={{ height: 10 }} />
         )}

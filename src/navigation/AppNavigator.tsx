@@ -1,16 +1,14 @@
 import React from "react";
 import { createStackNavigator } from "@react-navigation/stack";
 
-import RegisterScreen from "../screens/RegisterScreen";
-import LoginScreen from "../screens/LoginScreen";
 import DashboardScreen from "../screens/DashboardScreen";
 import ForwardingRulesScreen from "../screens/ForwardingRulesScreen";
+import SettingsScreen from "../screens/SettingsScreen";
 
 export type RootStackParamList = {
-  Register: undefined;
-  Login: undefined;
   Dashboard: undefined;
   ForwardingRules: undefined;
+  Settings: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -18,7 +16,7 @@ const Stack = createStackNavigator<RootStackParamList>();
 export default function AppNavigator() {
   return (
     <Stack.Navigator
-      initialRouteName="Register"
+      initialRouteName="Dashboard"
       screenOptions={{
         headerStyle: {
           backgroundColor: "#007AFF",
@@ -30,22 +28,6 @@ export default function AppNavigator() {
         headerBackTitleVisible: false,
       }}
     >
-      <Stack.Screen
-        name="Register"
-        component={RegisterScreen}
-        options={{
-          title: "Create Account",
-        }}
-      />
-
-      <Stack.Screen
-        name="Login"
-        component={LoginScreen}
-        options={{
-          title: "Sign In",
-        }}
-      />
-
       <Stack.Screen
         name="Dashboard"
         component={DashboardScreen}
@@ -59,6 +41,14 @@ export default function AppNavigator() {
         component={ForwardingRulesScreen}
         options={{
           title: "Forwarding Rules",
+        }}
+      />
+
+      <Stack.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          title: "Storage Settings",
         }}
       />
     </Stack.Navigator>

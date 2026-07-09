@@ -1,124 +1,113 @@
-import axios from "axios";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios, { AxiosInstance } from "axios";
 
-// ======================================
-// AXIOS INSTANCE
-// ======================================
-export const api = axios.create({
-  baseURL: "https://sms-backend-w6d5.onrender.com/api", // correct for emulator/physical device
-  timeout: 60000, // allow longer timeout for Render spin-up
+// ======================================================
+// BACKEND
+// ======================================================
+
+const BASE_URL =
+  "https://sms-backend-w6d5.onrender.com/api";
+
+// ======================================================
+// AXIOS
+// ======================================================
+
+const api: AxiosInstance = axios.create({
+  baseURL: BASE_URL,
+  timeout: 60000,
 });
 
-// ======================================
-// TOKEN HELPERS
-// ======================================
-export const setToken = async (token: string) => {
-  await AsyncStorage.setItem("token", token);
-};
+// ======================================================
+// REQUEST LOGGER
+// ======================================================
 
-export const getToken = async () => {
-  return await AsyncStorage.getItem("token");
-};
-
-export const removeToken = async () => {
-  await AsyncStorage.removeItem("token");
-};
-
-// ======================================
-// REQUEST INTERCEPTOR
-// ======================================
 api.interceptors.request.use(
-  async (config) => {
-    const token = await getToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+  (config) => {
+    console.log(
+      `${config.method?.toUpperCase()} ${config.baseURL}${config.url}`
+    );
+
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// ======================================
-// AUTH
-// ======================================
-export const login = async (username: string, password: string) => {
-  try {
-    // FastAPI OAuth2PasswordRequestForm expects form-encoded data
-    const payload = new URLSearchParams({ username, password });
+// ======================================================
+// SETTINGS
+// ======================================================
 
-    console.log("Login payload:", payload.toString());
+export interface Settings {
+  storage_endpoint: string;
+  storage_api_key: string;
+}
 
-    const res = await api.post("/users/login", payload, {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      responseType: "json",
-    });
-
-    await setToken(res.data.access_token);
-    return res.data;
-  } catch (error: any) {
-    if (error.response) {
-      console.error("Response error:", error.response.status, error.response.data);
-    } else if (error.request) {
-      console.error("Request error:", error.request);
-    } else {
-      console.error("Axios error:", error.message);
-    }
-    throw error;
-  }
+export const getSettings = async () => {
+  const response = await api.get("/settings");
+  return response.data;
 };
 
-// ======================================
-// REFRESH TOKEN
-// ======================================
-export const refreshToken = async () => {
-  try {
-    const res = await api.post("/users/refresh");
-    await setToken(res.data.access_token);
-    return res.data.access_token;
-  } catch (err) {
-    console.error("Token refresh failed:", err);
-    await removeToken();
-    throw err;
-  }
+export const saveSettings = async (
+  settings: Settings
+) => {
+  const response = await api.put(
+    "/settings",
+    settings
+  );
+
+  return response.data;
 };
 
-// ======================================
-// RESPONSE INTERCEPTOR (auto-refresh)
-// ======================================
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      try {
-        const newToken = await refreshToken();
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        return api(originalRequest);
-      } catch (refreshError) {
-        console.error("Refresh failed, logging out");
-        return Promise.reject(refreshError);
-      }
-    }
-
-    return Promise.reject(error);
-  }
-);
-
-// ======================================
+// ======================================================
 // SMS
-// ======================================
-export const listSms = async () => {
-  const res = await api.get("/sms/list");
-  return res.data;
-};
+// ======================================================
 
 export const forwardSms = async (sms: {
+  id?: string;
   sender: string;
   message: string;
   device_id: string;
+  received_at?: number;
 }) => {
-  const res = await api.post("/sms/forward", sms);
-  return res.data;
+  console.log("Forwarding SMS:", sms);
+
+  const response = await api.post(
+    "/sms/forward",
+    sms
+  );
+
+  return response.data;
 };
+
+export const listSms = async () => {
+  const response = await api.get("/sms/list");
+  return response.data;
+};
+
+export const getSms = async (id: string) => {
+  const response = await api.get(`/sms/${id}`);
+  return response.data;
+};
+
+export const deleteSms = async (id: string) => {
+  const response = await api.delete(`/sms/${id}`);
+  return response.data;
+};
+
+export const clearSms = async () => {
+  const response = await api.delete("/sms/clear");
+  return response.data;
+};
+
+// ======================================================
+// HEALTH
+// ======================================================
+
+export const pingServer = async () => {
+  const response = await api.get("/health");
+  return response.data;
+};
+
+// ======================================================
+// EXPORT
+// ======================================================
+
+export default api;

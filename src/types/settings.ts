@@ -1,16 +1,13 @@
 export interface ForwardingSettings {
-  // Master switch
   enabled: boolean;
-
-  // Forward everything
   forwardAll: boolean;
 
-  // Categories
-  banking: boolean;
-  mpesa: boolean;
-  otp: boolean;
-  contacts: boolean;
-  unknown: boolean;
-  promotions: boolean;
-  personal: boolean;
+  // Sender names
+  keywords: string[];
+
+  // User storage endpoint
+  storageEndpoint: string;
+
+  // Optional API key
+  storageApiKey: string;
 }

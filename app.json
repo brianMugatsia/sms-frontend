@@ -20,11 +20,17 @@
       "package": "com.anonymous.smsDashboard",
       "permissions": [
         "RECEIVE_SMS",
-        "READ_SMS"
-      ]
+        "READ_SMS",
+        "READ_CONTACTS"
+      ],
+      "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-font"
+    ]
   }
 }

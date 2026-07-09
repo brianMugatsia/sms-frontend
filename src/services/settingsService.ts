@@ -4,24 +4,22 @@ import { ForwardingSettings } from "../types/settings";
 const SETTINGS_KEY = "forwarding_settings";
 
 export const defaultSettings: ForwardingSettings = {
-  // Master switch
+  // SMS Forwarding
   enabled: true,
-
-  // Forward everything
   forwardAll: true,
 
-  // Categories
-  banking: true,
-  mpesa: true,
-  otp: true,
-  contacts: false,
-  unknown: false,
-  promotions: false,
-  personal: false,
+  // Allowed senders
+  keywords: [],
+
+  // User storage endpoint
+  storageEndpoint: "",
+
+  // Optional API key
+  storageApiKey: "",
 };
 
 /**
- * Load saved settings.
+ * Load settings
  */
 export async function loadSettings(): Promise<ForwardingSettings> {
   try {
@@ -42,7 +40,7 @@ export async function loadSettings(): Promise<ForwardingSettings> {
 }
 
 /**
- * Save settings.
+ * Save settings
  */
 export async function saveSettings(
   settings: ForwardingSettings
@@ -58,7 +56,22 @@ export async function saveSettings(
 }
 
 /**
- * Reset to defaults.
+ * Update endpoint only
+ */
+export async function updateEndpoint(
+  storageEndpoint: string,
+  storageApiKey = ""
+): Promise<void> {
+  const settings = await loadSettings();
+
+  settings.storageEndpoint = storageEndpoint;
+  settings.storageApiKey = storageApiKey;
+
+  await saveSettings(settings);
+}
+
+/**
+ * Reset settings
  */
 export async function resetSettings(): Promise<void> {
   await saveSettings(defaultSettings);

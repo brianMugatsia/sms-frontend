@@ -1,12 +1,14 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { Sms } from "../types/sms";
+import { getContactName } from "../services/contactService";
 
 interface Props {
   sms: Sms;
@@ -14,17 +16,69 @@ interface Props {
   onDelete?: (id: string) => void;
 }
 
+// Decodes the JWT payload (base64url) without pulling in a
+// dependency like jwt-decode — we only need the "sub" claim.
+function decodeJwtPayload(token: string): any | null {
+  try {
+    const payload = token.split(".")[1];
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+
+    const decoded =
+      typeof atob === "function"
+        ? atob(base64)
+        : Buffer.from(base64, "base64").toString("utf-8");
+
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
 export default function SmsItem({
   sms,
   onToggleRead,
   onDelete,
 }: Props) {
+  const [contactName, setContactName] =
+    useState<string | null>(null);
+
+  const [currentUsername, setCurrentUsername] =
+    useState<string | null>(null);
+
+  useEffect(() => {
+    setContactName(getContactName(sms.sender));
+  }, [sms.sender]);
+
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      const token = await AsyncStorage.getItem("token");
+
+      if (!token) return;
+
+      const payload = decodeJwtPayload(token);
+
+      if (payload?.sub) {
+        setCurrentUsername(payload.sub);
+      }
+    };
+
+    loadCurrentUser();
+  }, []);
+
   const formattedTime = sms.timestamp
     ? new Date(sms.timestamp).toLocaleString("en-KE", {
         dateStyle: "medium",
         timeStyle: "short",
       })
-    : "Unknown";
+    : "";
+
+  const avatarLetter = (
+    contactName ||
+    sms.sender ||
+    "?"
+  )
+    .charAt(0)
+    .toUpperCase();
 
   return (
     <View
@@ -38,20 +92,22 @@ export default function SmsItem({
       <View style={styles.header}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
-            {(sms.sender || "?")
-              .charAt(0)
-              .toUpperCase()}
+            {avatarLetter}
           </Text>
         </View>
 
         <View style={{ flex: 1 }}>
           <Text style={styles.sender}>
-            {sms.sender}
+            {contactName || sms.sender}
           </Text>
 
-          <Text
-            style={styles.time}
-          >
+          {contactName && (
+            <Text style={styles.phone}>
+              {sms.sender}
+            </Text>
+          )}
+
+          <Text style={styles.time}>
             {formattedTime}
           </Text>
         </View>
@@ -71,7 +127,7 @@ export default function SmsItem({
         {sms.message}
       </Text>
 
-      {/* Chips */}
+      {/* Info Chips */}
 
       <View style={styles.chipsContainer}>
         <View style={styles.chip}>
@@ -80,10 +136,18 @@ export default function SmsItem({
           </Text>
         </View>
 
+        {currentUsername && (
+          <View style={styles.chip}>
+            <Text style={styles.chipText}>
+              👤 {currentUsername}
+            </Text>
+          </View>
+        )}
+
         {sms.forwarded_by && (
           <View style={styles.chip}>
             <Text style={styles.chipText}>
-              👤 {sms.forwarded_by}
+              📤 {sms.forwarded_by}
             </Text>
           </View>
         )}
@@ -114,9 +178,7 @@ export default function SmsItem({
               onToggleRead(sms.id)
             }
           >
-            <Text
-              style={styles.buttonText}
-            >
+            <Text style={styles.buttonText}>
               {sms.read
                 ? "Mark Unread"
                 : "Mark Read"}
@@ -128,15 +190,15 @@ export default function SmsItem({
           <TouchableOpacity
             style={[
               styles.button,
-              { backgroundColor: "#e53935" },
+              {
+                backgroundColor: "#e53935",
+              },
             ]}
             onPress={() =>
               onDelete(sms.id)
             }
           >
-            <Text
-              style={styles.buttonText}
-            >
+            <Text style={styles.buttonText}>
               Delete
             </Text>
           </TouchableOpacity>
@@ -192,6 +254,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: "#222",
+  },
+
+  phone: {
+    marginTop: 2,
+    fontSize: 13,
+    color: "#666",
   },
 
   time: {
