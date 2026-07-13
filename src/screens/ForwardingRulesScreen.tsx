@@ -9,7 +9,6 @@ import {
   TouchableWithoutFeedback,
   Alert,
   TextInput,
-  Animated,
   KeyboardAvoidingView,
   Keyboard,
   Platform,
@@ -48,13 +47,11 @@ export default function ForwardingRulesScreen() {
   const [inputFocused, setInputFocused] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
 
-  // Accounts for the home-indicator / bottom tab bar area so the
-  // Save button and last list item are never covered by it.
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -62,14 +59,14 @@ export default function ForwardingRulesScreen() {
   }, []);
 
   const load = async () => {
-    const s = await loadSettings();
-    setSettings(s);
-
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 400,
-      useNativeDriver: true,
-    }).start();
+    try {
+      setLoadError(null);
+      const s = await loadSettings();
+      setSettings(s);
+    } catch (error) {
+      console.error("[ForwardingRules] Failed to load settings:", error);
+      setLoadError("Failed to load settings. Pull down to retry.");
+    }
   };
 
   const update = (
@@ -90,7 +87,7 @@ export default function ForwardingRulesScreen() {
     const value = keyword.trim();
 
     if (!value) {
-      Alert.alert("Keyword Required", "Enter a keyword.");
+      Alert.alert("Name Required", "Enter a contact name.");
       return;
     }
 
@@ -99,7 +96,7 @@ export default function ForwardingRulesScreen() {
     );
 
     if (exists) {
-      Alert.alert("Duplicate", "Keyword already exists.");
+      Alert.alert("Duplicate", "This name is already in the list.");
       return;
     }
 
@@ -110,8 +107,6 @@ export default function ForwardingRulesScreen() {
 
     setKeyword("");
 
-    // Keep focus on the input so the user can keep typing
-    // keywords one after another without tapping back in.
     inputRef.current?.focus();
   };
 
@@ -149,6 +144,23 @@ export default function ForwardingRulesScreen() {
     }
   };
 
+  if (loadError) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Icon name="error-outline" size={40} color={COLORS.danger} />
+        <Text style={[styles.loadingText, { marginTop: 12, textAlign: "center", paddingHorizontal: 24 }]}>
+          {loadError}
+        </Text>
+        <TouchableOpacity
+          style={{ marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: COLORS.primary, borderRadius: 10 }}
+          onPress={load}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700" }}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (!settings) {
     return (
       <View style={styles.loadingContainer}>
@@ -178,232 +190,231 @@ export default function ForwardingRulesScreen() {
           keyboardDismissMode="on-drag"
           bounces={true}
         >
-          <Animated.View style={{ opacity: fadeAnim }}>
-            {/* Header */}
-            <View style={styles.headerSection}>
-              <View style={styles.headerIconWrap}>
-                <Icon
-                  name="forward-to-inbox"
-                  size={26}
-                  color={COLORS.primary}
-                />
+          {/* Header */}
+          <View style={styles.headerSection}>
+            <View style={styles.headerIconWrap}>
+              <Icon
+                name="forward-to-inbox"
+                size={26}
+                color={COLORS.primary}
+              />
+            </View>
+
+            <Text style={styles.header}>
+              Forwarding Rules
+            </Text>
+
+            <Text style={styles.subtitle}>
+              Forward SMS based on contact names you choose.
+            </Text>
+          </View>
+
+          {/* Enable Forwarding */}
+          <View style={styles.card}>
+            <View style={styles.row}>
+              <View style={styles.rowTextWrap}>
+                <Text style={styles.title}>
+                  Enable Forwarding
+                </Text>
+
+                <Text style={styles.rowSubtitle}>
+                  Turn SMS forwarding on or off.
+                </Text>
               </View>
 
-              <Text style={styles.header}>
-                Forwarding Rules
+              <Switch
+                value={settings.enabled}
+                onValueChange={(v) =>
+                  update("enabled", v)
+                }
+                trackColor={{
+                  false: COLORS.border,
+                  true: COLORS.primary,
+                }}
+                thumbColor="#fff"
+                ios_backgroundColor={COLORS.border}
+              />
+            </View>
+          </View>
+
+          {/* Forward All */}
+          <View style={styles.card}>
+            <View style={styles.row}>
+              <View style={styles.rowTextWrap}>
+                <Text style={styles.title}>
+                  Forward All SMS
+                </Text>
+
+                <Text style={styles.rowSubtitle}>
+                  Ignore the contact list below and forward every
+                  incoming SMS.
+                </Text>
+              </View>
+
+              <Switch
+                value={settings.forwardAll}
+                onValueChange={(v) =>
+                  update("forwardAll", v)
+                }
+                trackColor={{
+                  false: COLORS.border,
+                  true: COLORS.primary,
+                }}
+                thumbColor="#fff"
+                ios_backgroundColor={COLORS.border}
+              />
+            </View>
+          </View>
+
+          {/* Allowed Contacts */}
+          {!settings.forwardAll && (
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>
+                  Contact Names & Keywords
+
               </Text>
 
               <Text style={styles.subtitle}>
-                Forward SMS using keywords you choose.
+                  Forward SMS only when the sender matches a saved contact name or the sender ID contains one of the keywords below.
+
               </Text>
-            </View>
 
-            {/* Enable Forwarding */}
-            <View style={styles.card}>
-              <View style={styles.row}>
-                <View style={styles.rowTextWrap}>
-                  <Text style={styles.title}>
-                    Enable Forwarding
-                  </Text>
+              <Text style={styles.fieldLabel}>
+                 ADD CONTACT NAME OR KEYWORD
+              </Text>
 
-                  <Text style={styles.rowSubtitle}>
-                    Turn SMS forwarding on or off.
-                  </Text>
+              <View style={styles.inputRow}>
+                <View
+                  style={[
+                    styles.inputWrap,
+                    inputFocused && styles.inputWrapFocused,
+                  ]}
+                >
+                  <Icon
+                    name="person"
+                    size={18}
+                    color={
+                      inputFocused
+                        ? COLORS.primary
+                        : COLORS.subtext
+                    }
+                    style={styles.inputIcon}
+                  />
+
+                  <TextInput
+                    ref={inputRef}
+                    value={keyword}
+                    onChangeText={setKeyword}
+                    placeholder="e.g. Mom, M-PESA, EQUITY"
+                    placeholderTextColor="#9CA3AF"
+                    style={styles.input}
+                    returnKeyType="done"
+                    onSubmitEditing={addKeyword}
+                    blurOnSubmit={false}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    onFocus={() => {
+                      setInputFocused(true);
+                      setTimeout(
+                        () =>
+                          scrollRef.current?.scrollToEnd({
+                            animated: true,
+                          }),
+                        150
+                      );
+                    }}
+                    onBlur={() => setInputFocused(false)}
+                  />
                 </View>
 
-                <Switch
-                  value={settings.enabled}
-                  onValueChange={(v) =>
-                    update("enabled", v)
-                  }
-                  trackColor={{
-                    false: COLORS.border,
-                    true: COLORS.primary,
-                  }}
-                  thumbColor="#fff"
-                  ios_backgroundColor={COLORS.border}
-                />
+                <TouchableOpacity
+                  style={[
+                    styles.addButton,
+                    !keyword.trim() && styles.addButtonDisabled,
+                  ]}
+                  onPress={addKeyword}
+                  activeOpacity={0.8}
+                >
+                  <Icon
+                    name="add"
+                    size={22}
+                    color="#fff"
+                  />
+                </TouchableOpacity>
               </View>
-            </View>
 
-            {/* Forward All */}
-            <View style={styles.card}>
-              <View style={styles.row}>
-                <View style={styles.rowTextWrap}>
-                  <Text style={styles.title}>
-                    Forward All SMS
-                  </Text>
-
-                  <Text style={styles.rowSubtitle}>
-                    Ignore keywords and forward every
-                    incoming SMS.
+              {settings.keywords.length === 0 ? (
+                <View style={styles.emptyWrap}>
+                  <Icon
+                    name="person-off"
+                    size={18}
+                    color={COLORS.subtext}
+                  />
+                  <Text style={styles.emptyText}>
+                    No contacts added yet
                   </Text>
                 </View>
-
-                <Switch
-                  value={settings.forwardAll}
-                  onValueChange={(v) =>
-                    update("forwardAll", v)
-                  }
-                  trackColor={{
-                    false: COLORS.border,
-                    true: COLORS.primary,
-                  }}
-                  thumbColor="#fff"
-                  ios_backgroundColor={COLORS.border}
-                />
-              </View>
-            </View>
-
-            {/* Keywords */}
-            {!settings.forwardAll && (
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>
-                  Keywords
-                </Text>
-
-                <Text style={styles.subtitle}>
-                  Any SMS containing one of these
-                  words will be forwarded.
-                </Text>
-
-                <Text style={styles.fieldLabel}>
-                  ADD A KEYWORD
-                </Text>
-
-                <View style={styles.inputRow}>
-                  <View
-                    style={[
-                      styles.inputWrap,
-                      inputFocused && styles.inputWrapFocused,
-                    ]}
-                  >
-                    <Icon
-                      name="sell"
-                      size={18}
-                      color={
-                        inputFocused
-                          ? COLORS.primary
-                          : COLORS.subtext
-                      }
-                      style={styles.inputIcon}
-                    />
-
-                    <TextInput
-                      ref={inputRef}
-                      value={keyword}
-                      onChangeText={setKeyword}
-                      placeholder="e.g. M-PESA"
-                      placeholderTextColor="#9CA3AF"
-                      style={styles.input}
-                      returnKeyType="done"
-                      onSubmitEditing={addKeyword}
-                      blurOnSubmit={false}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      onFocus={() => {
-                        setInputFocused(true);
-                        setTimeout(
-                          () =>
-                            scrollRef.current?.scrollToEnd({
-                              animated: true,
-                            }),
-                          150
-                        );
-                      }}
-                      onBlur={() => setInputFocused(false)}
-                    />
-                  </View>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.addButton,
-                      !keyword.trim() && styles.addButtonDisabled,
-                    ]}
-                    onPress={addKeyword}
-                    activeOpacity={0.8}
-                  >
-                    <Icon
-                      name="add"
-                      size={22}
-                      color="#fff"
-                    />
-                  </TouchableOpacity>
-                </View>
-
-                {settings.keywords.length === 0 ? (
-                  <View style={styles.emptyWrap}>
-                    <Icon
-                      name="label-off"
-                      size={18}
-                      color={COLORS.subtext}
-                    />
-                    <Text style={styles.emptyText}>
-                      No keywords added yet
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.keywordList}>
-                    {settings.keywords.map((item, index) => (
-                      <View
-                        key={item}
-                        style={[
-                          styles.keywordRow,
-                          index === settings.keywords.length - 1 &&
-                            styles.keywordRowLast,
-                        ]}
-                      >
-                        <View style={styles.keywordLeft}>
-                          <View style={styles.keywordDot} />
-                          <Text style={styles.keywordText}>
-                            {item}
-                          </Text>
-                        </View>
-
-                        <TouchableOpacity
-                          onPress={() => removeKeyword(item)}
-                          hitSlop={{
-                            top: 8,
-                            bottom: 8,
-                            left: 8,
-                            right: 8,
-                          }}
-                        >
-                          <Icon
-                            name="close"
-                            size={18}
-                            color={COLORS.subtext}
-                          />
-                        </TouchableOpacity>
+              ) : (
+                <View style={styles.keywordList}>
+                  {settings.keywords.map((item, index) => (
+                    <View
+                      key={item}
+                      style={[
+                        styles.keywordRow,
+                        index === settings.keywords.length - 1 &&
+                          styles.keywordRowLast,
+                      ]}
+                    >
+                      <View style={styles.keywordLeft}>
+                        <View style={styles.keywordDot} />
+                        <Text style={styles.keywordText}>
+                          {item}
+                        </Text>
                       </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            )}
 
-            <TouchableOpacity
-              style={[
-                styles.button,
-                saving && styles.buttonDisabled,
-              ]}
-              onPress={save}
-              disabled={saving}
-              activeOpacity={0.85}
-            >
-              <Icon
-                name="save"
-                size={19}
-                color="#fff"
-              />
+                      <TouchableOpacity
+                        onPress={() => removeKeyword(item)}
+                        hitSlop={{
+                          top: 8,
+                          bottom: 8,
+                          left: 8,
+                          right: 8,
+                        }}
+                      >
+                        <Icon
+                          name="close"
+                          size={18}
+                          color={COLORS.subtext}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
 
-              <Text style={styles.buttonText}>
-                {saving
-                  ? "Saving..."
-                  : "Save Settings"}
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
+          <TouchableOpacity
+            style={[
+              styles.button,
+              saving && styles.buttonDisabled,
+            ]}
+            onPress={save}
+            disabled={saving}
+            activeOpacity={0.85}
+          >
+            <Icon
+              name="save"
+              size={19}
+              color="#fff"
+            />
+
+            <Text style={styles.buttonText}>
+              {saving
+                ? "Saving..."
+                : "Save Settings"}
+            </Text>
+          </TouchableOpacity>
         </ScrollView>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>

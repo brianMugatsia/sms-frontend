@@ -39,6 +39,8 @@ export const syncPendingSMS = async () => {
 
       console.log("[SYNC] Offline");
 
+      scheduleRetry();
+
       return;
 
     }
@@ -49,6 +51,8 @@ export const syncPendingSMS = async () => {
 
       console.log("[SYNC] Backend unavailable");
 
+      scheduleRetry();
+
       return;
 
     }
@@ -58,6 +62,8 @@ export const syncPendingSMS = async () => {
     if (queue.length === 0) {
 
       console.log("[SYNC] Queue empty");
+
+      resetRetry();
 
       return;
 

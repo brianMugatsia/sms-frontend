@@ -27,6 +27,7 @@ import { MaterialIcons as Icon } from "@expo/vector-icons";
 
 import { listSms, deleteSms, clearSms } from "../services/api";
 import { connectWebSocket, disconnectWebSocket } from "../services/websocket";
+import { getContactName } from "../services/contactService";
 
 const { width } = Dimensions.get("window");
 const isTablet = width >= 768;
@@ -69,6 +70,7 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
   const [statusFilter, setStatusFilter] =
     useState<(typeof STATUS_OPTIONS)[number]>("All");
   const [deviceFilter, setDeviceFilter] = useState("All");
@@ -165,9 +167,11 @@ export default function DashboardScreen() {
 
   const filteredMessages = useMemo(() => {
     return messages.filter((m) => {
+      const contactName = getContactName(m.sender) ?? "";
       const searchMatch =
         m.sender.toLowerCase().includes(search.toLowerCase()) ||
-        m.message.toLowerCase().includes(search.toLowerCase());
+        m.message.toLowerCase().includes(search.toLowerCase()) ||
+        contactName.toLowerCase().includes(search.toLowerCase());
       const deviceMatch =
         deviceFilter === "All" ? true : m.device_id === deviceFilter;
       const statusMatch =
@@ -234,47 +238,89 @@ export default function DashboardScreen() {
       {/* Stats */}
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
+          <View style={[styles.statIconWrap, { backgroundColor: COLORS.primarySoft }]}>
+            <Icon name="forum" size={16} color={COLORS.primary} />
+          </View>
           <Text style={styles.cardValue}>{messages.length}</Text>
-          <Text style={styles.cardLabel}>Total</Text>
+          <Text style={styles.cardLabel}>TOTAL</Text>
         </View>
+
+        <View style={styles.statDivider} />
+
         <View style={styles.statCard}>
+          <View style={[styles.statIconWrap, { backgroundColor: COLORS.warningSoft }]}>
+            <Icon name="schedule" size={16} color={COLORS.warning} />
+          </View>
           <Text style={[styles.cardValue, { color: COLORS.warning }]}>
             {pendingCount}
           </Text>
-          <Text style={styles.cardLabel}>Pending</Text>
+          <Text style={styles.cardLabel}>PENDING</Text>
         </View>
+
+        <View style={styles.statDivider} />
+
         <View style={styles.statCard}>
+          <View style={[styles.statIconWrap, { backgroundColor: COLORS.successSoft }]}>
+            <Icon name="check-circle" size={16} color={COLORS.success} />
+          </View>
           <Text style={[styles.cardValue, { color: COLORS.success }]}>
             {successCount}
           </Text>
-          <Text style={styles.cardLabel}>Success</Text>
+          <Text style={styles.cardLabel}>SUCCESS</Text>
         </View>
+
+        <View style={styles.statDivider} />
+
         <View style={styles.statCard}>
+          <View style={[styles.statIconWrap, { backgroundColor: COLORS.dangerSoft }]}>
+            <Icon name="error-outline" size={16} color={COLORS.danger} />
+          </View>
           <Text style={[styles.cardValue, { color: COLORS.danger }]}>
             {failedCount}
           </Text>
-          <Text style={styles.cardLabel}>Failed</Text>
+          <Text style={styles.cardLabel}>FAILED</Text>
         </View>
       </View>
 
       {/* Search */}
-      <View style={styles.searchWrap}>
-        <Icon
-          name="search"
-          size={20}
-          color={COLORS.faint}
-          style={styles.searchIcon}
-        />
+      <View
+        style={[
+          styles.searchWrap,
+          (searchFocused || search.length > 0) && styles.searchWrapActive,
+        ]}
+      >
+        <View
+          style={[
+            styles.searchIconBadge,
+            (searchFocused || search.length > 0) && styles.searchIconBadgeActive,
+          ]}
+        >
+          <Icon
+            name="search"
+            size={16}
+            color={(searchFocused || search.length > 0) ? "#fff" : COLORS.subtext}
+          />
+        </View>
+
         <TextInput
           style={styles.search}
-          placeholder="Search sender or message"
+          placeholder="Search sender, contact, or message"
           placeholderTextColor={COLORS.faint}
           value={search}
           onChangeText={setSearch}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
+          returnKeyType="search"
         />
+
         {search.length > 0 && (
-          <TouchableOpacity onPress={() => setSearch("")} hitSlop={8}>
-            <Icon name="close" size={18} color={COLORS.faint} />
+          <TouchableOpacity
+            onPress={() => setSearch("")}
+            hitSlop={10}
+            style={styles.searchClearBtn}
+            activeOpacity={0.7}
+          >
+            <Icon name="close" size={13} color="#fff" />
           </TouchableOpacity>
         )}
       </View>
@@ -288,6 +334,7 @@ export default function DashboardScreen() {
               key={option}
               style={[styles.chip, active && styles.chipActive]}
               onPress={() => setStatusFilter(option)}
+              activeOpacity={0.7}
             >
               <Text style={[styles.chipText, active && styles.chipTextActive]}>
                 {option}
@@ -357,17 +404,23 @@ export default function DashboardScreen() {
 
   const renderItem = ({ item }: { item: SmsItem }) => {
     const meta = statusMeta(item.status);
+    const contactName = getContactName(item.sender);
+    const displayName = contactName || item.sender;
+
     return (
       <View style={styles.card}>
         <View style={styles.header}>
           <View style={styles.senderRow}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>
-                {item.sender?.charAt(0)?.toUpperCase() || "?"}
+                {displayName?.charAt(0)?.toUpperCase() || "?"}
               </Text>
             </View>
             <View>
-              <Text style={styles.sender}>{item.sender}</Text>
+              <Text style={styles.sender}>{displayName}</Text>
+              {contactName && (
+                <Text style={styles.deviceTag}>{item.sender}</Text>
+              )}
               <Text style={styles.deviceTag}>{item.device_id}</Text>
             </View>
           </View>
@@ -521,48 +574,120 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 4,
     backgroundColor: COLORS.card,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 16,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
-    paddingHorizontal: 14,
-    height: 48,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    height: 54,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#111827",
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 3 },
+      },
+      android: { elevation: 1.5 },
+    }),
   },
 
-  searchIcon: { marginRight: 8 },
+  searchWrapActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: "#FAFAFF",
+    ...Platform.select({
+      ios: {
+        shadowOpacity: 0.09,
+        shadowColor: COLORS.primary,
+      },
+      android: { elevation: 3 },
+    }),
+  },
 
-  search: { flex: 1, fontSize: 15, color: COLORS.text },
+  searchIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: COLORS.background,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+
+  searchIconBadgeActive: {
+    backgroundColor: COLORS.primary,
+  },
+
+  search: {
+    flex: 1,
+    fontSize: 14.5,
+    color: COLORS.text,
+    fontWeight: "500",
+    paddingVertical: 0,
+  },
+
+  searchClearBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: COLORS.danger,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 8,
+  },
 
   statsRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
     marginHorizontal: 16,
     marginTop: 16,
-    marginBottom: 16,
-    flexWrap: "wrap",
-  },
-
-  statCard: {
+    marginBottom: 18,
     backgroundColor: COLORS.card,
-    width: isTablet ? "23%" : "23.5%",
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: "center",
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
     ...Platform.select({
       ios: {
         shadowColor: "#111827",
         shadowOpacity: 0.04,
-        shadowRadius: 6,
+        shadowRadius: 8,
         shadowOffset: { width: 0, height: 2 },
       },
       android: { elevation: 1 },
     }),
   },
 
-  cardValue: { fontSize: 20, fontWeight: "800", color: COLORS.primary },
+  statCard: {
+    flex: 1,
+    alignItems: "center",
+  },
 
-  cardLabel: { marginTop: 4, color: COLORS.subtext, fontSize: 11, fontWeight: "600" },
+  statDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: COLORS.border,
+  },
+
+  statIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+
+  cardValue: { fontSize: 19, fontWeight: "800", color: COLORS.primary, letterSpacing: -0.3 },
+
+  cardLabel: {
+    marginTop: 3,
+    color: COLORS.subtext,
+    fontSize: 9.5,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+  },
 
   filterRow: {
     flexDirection: "row",

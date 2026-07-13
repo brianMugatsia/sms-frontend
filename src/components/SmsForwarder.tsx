@@ -10,11 +10,18 @@ import {
   stopQueueManager,
 } from "../services/queueManager";
 
+import {
+  startForegroundService,
+  stopForegroundService,
+} from "../services/foregroundService";
+
 export default function SmsForwarder() {
 
   useEffect(() => {
 
     const initialize = async () => {
+
+      await startForegroundService();
 
       await startQueueManager();
 
@@ -29,6 +36,8 @@ export default function SmsForwarder() {
       stopSmsForwarding();
 
       stopQueueManager();
+
+      stopForegroundService();
 
     };
 

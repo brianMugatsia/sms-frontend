@@ -1,4 +1,5 @@
 import { loadSettings } from "./settingsService";
+import { getContactName } from "./contactService";
 
 interface SmsData {
   sender: string;
@@ -12,7 +13,7 @@ export async function shouldForward({
   if (!settings.enabled) {
     return false;
   }
-http://127.0.0.1:8000
+
   if (settings.forwardAll) {
     return true;
   }
@@ -21,10 +22,11 @@ http://127.0.0.1:8000
     return false;
   }
 
-  const senderLower = sender.trim().toLowerCase();
+  const contactName = getContactName(sender);
+  const nameToCheck = (contactName ?? sender).trim().toLowerCase();
 
   return settings.keywords.some(
-    (allowedSender) =>
-      senderLower === allowedSender.trim().toLowerCase()
+    (allowedName) =>
+      nameToCheck === allowedName.trim().toLowerCase()
   );
 }
