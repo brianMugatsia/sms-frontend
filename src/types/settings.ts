@@ -6,8 +6,8 @@ export interface ForwardingSettings {
   keywords: string[];
 
   // User storage endpoint
-  storageEndpoint: string;
+  storage_endpoint: string;
 
   // Optional API key
-  storageApiKey: string;
+  storage_api_key: string;
 }

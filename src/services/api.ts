@@ -112,7 +112,7 @@ export const deleteSms = async (id: string) => {
 };
 
 export const clearSms = async () => {
-  const response = await api.delete("/sms/clear");
+  const response = await api.delete("/sms");
   return response.data;
 };
 

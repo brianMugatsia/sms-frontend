@@ -66,6 +66,7 @@ const COLORS = {
   warningSoft: "#FFFBEB",
   dangerSoft: "#FEF2F2",
   overlay: "rgba(17, 24, 39, 0.45)",
+  segmentTrack: "#EAEBF2",
 };
 
 const STATUS_OPTIONS = ["All", "Pending", "Success", "Failed"] as const;
@@ -120,7 +121,6 @@ export default function DashboardScreen() {
 
       const refreshedData = await refreshSmsDashboard();
 
-      // Safely unpack backend payload regardless of array or paginated object structure
       const rawItems = refreshedData && typeof refreshedData === 'object' && 'items' in refreshedData
         ? refreshedData.items
         : refreshedData;
@@ -293,50 +293,44 @@ export default function DashboardScreen() {
 
   const renderHeader = useCallback(() => (
     <View>
-      {/* Stats */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <View style={[styles.statIconWrap, { backgroundColor: COLORS.primarySoft }]}>
-            <Icon name="forum" size={16} color={COLORS.primary} />
+      {/* Stats — KPI strip */}
+      <View style={styles.kpiRow}>
+        <View style={[styles.kpiCard, { borderTopColor: COLORS.primary }]}>
+          <View style={[styles.kpiIconWrap, { backgroundColor: COLORS.primarySoft }]}>
+            <Icon name="forum" size={15} color={COLORS.primary} />
           </View>
-          <Text style={styles.cardValue}>{messages.length}</Text>
-          <Text style={styles.cardLabel}>TOTAL</Text>
+          <Text style={styles.kpiValue}>{messages.length}</Text>
+          <Text style={styles.kpiLabel}>Total</Text>
         </View>
 
-        <View style={styles.statDivider} />
-
-        <View style={styles.statCard}>
-          <View style={[styles.statIconWrap, { backgroundColor: COLORS.warningSoft }]}>
-            <Icon name="schedule" size={16} color={COLORS.warning} />
+        <View style={[styles.kpiCard, { borderTopColor: COLORS.warning }]}>
+          <View style={[styles.kpiIconWrap, { backgroundColor: COLORS.warningSoft }]}>
+            <Icon name="schedule" size={15} color={COLORS.warning} />
           </View>
-          <Text style={[styles.cardValue, { color: COLORS.warning }]}>
+          <Text style={[styles.kpiValue, { color: COLORS.warning }]}>
             {stats.pending}
           </Text>
-          <Text style={styles.cardLabel}>PENDING</Text>
+          <Text style={styles.kpiLabel}>Pending</Text>
         </View>
 
-        <View style={styles.statDivider} />
-
-        <View style={styles.statCard}>
-          <View style={[styles.statIconWrap, { backgroundColor: COLORS.successSoft }]}>
-            <Icon name="check-circle" size={16} color={COLORS.success} />
+        <View style={[styles.kpiCard, { borderTopColor: COLORS.success }]}>
+          <View style={[styles.kpiIconWrap, { backgroundColor: COLORS.successSoft }]}>
+            <Icon name="check-circle" size={15} color={COLORS.success} />
           </View>
-          <Text style={[styles.cardValue, { color: COLORS.success }]}>
+          <Text style={[styles.kpiValue, { color: COLORS.success }]}>
             {stats.success}
           </Text>
-          <Text style={styles.cardLabel}>SUCCESS</Text>
+          <Text style={styles.kpiLabel}>Success</Text>
         </View>
 
-        <View style={styles.statDivider} />
-
-        <View style={styles.statCard}>
-          <View style={[styles.statIconWrap, { backgroundColor: COLORS.dangerSoft }]}>
-            <Icon name="error-outline" size={16} color={COLORS.danger} />
+        <View style={[styles.kpiCard, { borderTopColor: COLORS.danger }]}>
+          <View style={[styles.kpiIconWrap, { backgroundColor: COLORS.dangerSoft }]}>
+            <Icon name="error-outline" size={15} color={COLORS.danger} />
           </View>
-          <Text style={[styles.cardValue, { color: COLORS.danger }]}>
+          <Text style={[styles.kpiValue, { color: COLORS.danger }]}>
             {stats.failed}
           </Text>
-          <Text style={styles.cardLabel}>FAILED</Text>
+          <Text style={styles.kpiLabel}>Failed</Text>
         </View>
       </View>
 
@@ -383,33 +377,31 @@ export default function DashboardScreen() {
         )}
       </View>
 
-      {/* Status filter chips */}
-      <View style={styles.filterRow}>
+      {/* Status filter — segmented control */}
+      <View style={styles.segmentTrack}>
         {STATUS_OPTIONS.map((option) => {
           const active = statusFilter === option;
           return (
             <TouchableOpacity
               key={option}
-              style={[styles.chip, active && styles.chipActive]}
+              style={[styles.segmentItem, active && styles.segmentItemActive]}
               onPress={() => setStatusFilter(option)}
-              activeOpacity={0.7}
+              activeOpacity={0.8}
             >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>
+              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
                 {option}
               </Text>
             </TouchableOpacity>
           );
         })}
-        {hasFilters && (
-          <TouchableOpacity
-            style={styles.clearFiltersBtn}
-            onPress={clearAllFilters}
-          >
-            <Icon name="filter-alt-off" size={16} color={COLORS.subtext} />
-            <Text style={styles.clearFiltersText}>Reset</Text>
-          </TouchableOpacity>
-        )}
       </View>
+
+      {hasFilters && (
+        <TouchableOpacity style={styles.clearFiltersBtnStandalone} onPress={clearAllFilters}>
+          <Icon name="filter-alt-off" size={14} color={COLORS.subtext} />
+          <Text style={styles.clearFiltersText}>Reset filters</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Device filter */}
       {devices.length > 1 && (
@@ -642,6 +634,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   headerButton: { marginRight: 16, padding: 4 },
   listContent: { paddingBottom: 32 },
+
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -703,82 +696,102 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginLeft: 8,
   },
-  statsRow: {
+
+  kpiRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     marginHorizontal: 16,
     marginTop: 16,
     marginBottom: 18,
+    gap: 8,
+  },
+  kpiCard: {
+    flex: 1,
     backgroundColor: COLORS.card,
-    borderRadius: 16,
+    borderRadius: 14,
+    borderTopWidth: 3,
     borderWidth: 1,
     borderColor: COLORS.border,
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 8,
+    alignItems: "flex-start",
     ...Platform.select({
       ios: {
         shadowColor: "#111827",
-        shadowOpacity: 0.04,
-        shadowRadius: 8,
+        shadowOpacity: 0.05,
+        shadowRadius: 6,
         shadowOffset: { width: 0, height: 2 },
       },
       android: { elevation: 1 },
     }),
   },
-  statCard: {
-    flex: 1,
-    alignItems: "center",
-  },
-  statDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: COLORS.border,
-  },
-  statIconWrap: {
+  kpiIconWrap: {
     width: 26,
     height: 26,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 6,
+    marginBottom: 10,
   },
-  cardValue: { fontSize: 19, fontWeight: "800", color: COLORS.primary, letterSpacing: -0.3 },
-  cardLabel: {
+  kpiValue: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: COLORS.primary,
+    letterSpacing: -0.4,
+    fontVariant: ["tabular-nums"],
+  },
+  kpiLabel: {
     marginTop: 3,
     color: COLORS.subtext,
-    fontSize: 9.5,
+    fontSize: 10.5,
     fontWeight: "700",
-    letterSpacing: 0.6,
+    letterSpacing: 0.4,
   },
-  filterRow: {
+
+  segmentTrack: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
     marginHorizontal: 16,
     marginTop: 14,
+    backgroundColor: COLORS.segmentTrack,
+    borderRadius: 12,
+    padding: 3,
   },
-  chip: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
-    paddingHorizontal: 14,
+  segmentItem: {
+    flex: 1,
     paddingVertical: 8,
-    marginRight: 8,
-    marginBottom: 8,
+    borderRadius: 9,
+    alignItems: "center",
   },
-  chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  chipText: { color: COLORS.text, fontWeight: "600", fontSize: 13 },
-  chipTextActive: { color: "#fff" },
-  clearFiltersBtn: {
+  segmentItemActive: {
+    backgroundColor: COLORS.card,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#111827",
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 1 },
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  segmentText: {
+    fontSize: 12.5,
+    fontWeight: "600",
+    color: COLORS.subtext,
+  },
+  segmentTextActive: {
+    color: COLORS.primary,
+    fontWeight: "700",
+  },
+  clearFiltersBtnStandalone: {
     flexDirection: "row",
     alignItems: "center",
-    marginLeft: 4,
-    marginBottom: 8,
+    alignSelf: "flex-end",
+    marginHorizontal: 16,
+    marginTop: 8,
   },
   clearFiltersText: { marginLeft: 4, color: COLORS.subtext, fontWeight: "600", fontSize: 13 },
-  deviceFilterScroll: { marginTop: 2 },
+
+  deviceFilterScroll: { marginTop: 14 },
   deviceFilterContent: { paddingHorizontal: 16, paddingBottom: 4 },
   deviceChip: {
     flexDirection: "row",
@@ -794,6 +807,7 @@ const styles = StyleSheet.create({
   deviceChipActive: { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary },
   deviceChipText: { marginLeft: 6, color: COLORS.subtext, fontWeight: "600", fontSize: 13 },
   deviceChipTextActive: { color: COLORS.primary },
+
   listHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -805,6 +819,7 @@ const styles = StyleSheet.create({
   listHeaderTitle: { fontSize: 15, fontWeight: "700", color: COLORS.text },
   listHeaderCount: { color: COLORS.subtext, fontWeight: "500" },
   clearAllInlineText: { color: COLORS.danger, fontWeight: "600", fontSize: 13 },
+
   emptyState: { alignItems: "center", marginTop: 60, paddingHorizontal: 32 },
   emptyIconWrap: {
     width: 64,
@@ -831,6 +846,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primarySoft,
   },
   emptyClearBtnText: { color: COLORS.primary, fontWeight: "700", fontSize: 13 },
+
   card: {
     backgroundColor: COLORS.card,
     marginHorizontal: 16,
@@ -888,6 +904,7 @@ const styles = StyleSheet.create({
   time: { fontSize: 11, color: COLORS.faint },
   deleteButton: { flexDirection: "row", alignItems: "center" },
   deleteText: { color: COLORS.danger, fontWeight: "600", fontSize: 12, marginLeft: 4 },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: COLORS.overlay,
