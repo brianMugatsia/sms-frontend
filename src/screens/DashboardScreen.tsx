@@ -3,6 +3,7 @@ import React, {
   useMemo,
   useLayoutEffect,
   useState,
+  useCallback,
 } from "react";
 
 import {
@@ -25,9 +26,16 @@ import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialIcons as Icon } from "@expo/vector-icons";
 
-import { listSms, deleteSms, clearSms } from "../services/api";
+import { deleteSms, clearSms } from "../services/api";
+import { refreshSmsDashboard } from "../services/syncService";
+import {
+  getDashboardSMS,
+  deleteCachedSms,
+  clearCachedSms
+} from "../services/smsCacheService";
 import { connectWebSocket, disconnectWebSocket } from "../services/websocket";
 import { getContactName } from "../services/contactService";
+import { openBatterySettings } from "../services/batteryOptimization";
 
 const { width } = Dimensions.get("window");
 const isTablet = width >= 768;
@@ -96,8 +104,41 @@ export default function DashboardScreen() {
   const loadMessages = async () => {
     try {
       setRefreshing(true);
-      const response = await listSms();
-      setMessages(response.items ?? []);
+      const cached = await getDashboardSMS();
+      if (cached && cached.length > 0) {
+        setMessages(
+          cached.map((c) => ({
+            id: c.id,
+            sender: c.sender,
+            message: c.message,
+            timestamp: c.timestamp,
+            device_id: c.device_id,
+            status: c.status as SmsItem["status"],
+          }))
+        );
+      }
+
+      const refreshedData = await refreshSmsDashboard();
+
+      // Safely unpack backend payload regardless of array or paginated object structure
+      const rawItems = refreshedData && typeof refreshedData === 'object' && 'items' in refreshedData
+        ? refreshedData.items
+        : refreshedData;
+
+      if (Array.isArray(rawItems)) {
+        setMessages(
+          rawItems.map((c) => ({
+            id: c.id,
+            sender: c.sender,
+            message: c.message,
+            timestamp: c.timestamp,
+            device_id: c.device_id,
+            status: c.status as SmsItem["status"],
+          }))
+        );
+      } else {
+        console.warn("[SYNC] Unexpected structure returned by refresh dashboard sync:", refreshedData);
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -122,7 +163,7 @@ export default function DashboardScreen() {
     };
   }, []);
 
-  const handleDelete = (id: string) => {
+  const handleDelete = useCallback((id: string) => {
     Alert.alert("Delete Message", "Remove this message from the dashboard?", [
       { text: "Cancel", style: "cancel" },
       {
@@ -131,16 +172,27 @@ export default function DashboardScreen() {
         onPress: async () => {
           try {
             await deleteSms(id);
+            await deleteCachedSms(id);
             setMessages((prev) => prev.filter((m) => m.id !== id));
-          } catch (error) {
-            console.error(error);
+          } catch (error: any) {
+            console.error("[DELETE ERROR]", error);
+            if (error?.response?.status === 404) {
+              await deleteCachedSms(id);
+              setMessages((prev) => prev.filter((m) => m.id !== id));
+              Alert.alert("Notice", "This message was already removed from the server.");
+            } else {
+              Alert.alert(
+                "Delete Failed",
+                "Could not delete message. Please check your connection and try again."
+              );
+            }
           }
         },
       },
     ]);
-  };
+  }, []);
 
-  const handleClearAll = () => {
+  const handleClearAll = useCallback(() => {
     Alert.alert("Clear Dashboard", "Remove all SMS from the dashboard?", [
       { text: "Cancel", style: "cancel" },
       {
@@ -149,14 +201,16 @@ export default function DashboardScreen() {
         onPress: async () => {
           try {
             await clearSms();
+            await clearCachedSms();
             setMessages([]);
           } catch (error) {
-            console.error(error);
+            console.error("[CLEAR ALL ERROR]", error);
+            Alert.alert("Error", "Could not clear messages. Try again later.");
           }
         },
       },
     ]);
-  };
+  }, []);
 
   const devices = useMemo(() => {
     const unique = Array.from(
@@ -180,18 +234,22 @@ export default function DashboardScreen() {
     });
   }, [messages, search, deviceFilter, statusFilter]);
 
-  const pendingCount = messages.filter((m) => m.status === "pending").length;
-  const successCount = messages.filter((m) => m.status === "success").length;
-  const failedCount = messages.filter((m) => m.status === "failed").length;
+  const stats = useMemo(() => {
+    return {
+      pending: messages.filter((m) => m.status === "pending").length,
+      success: messages.filter((m) => m.status === "success").length,
+      failed: messages.filter((m) => m.status === "failed").length,
+    };
+  }, [messages]);
 
   const hasFilters =
     search.length > 0 || statusFilter !== "All" || deviceFilter !== "All";
 
-  const clearAllFilters = () => {
+  const clearAllFilters = useCallback(() => {
     setSearch("");
     setStatusFilter("All");
     setDeviceFilter("All");
-  };
+  }, []);
 
   const statusMeta = (status: SmsItem["status"]) => {
     switch (status) {
@@ -204,7 +262,7 @@ export default function DashboardScreen() {
     }
   };
 
-  const renderEmpty = () => {
+  const renderEmpty = useCallback(() => {
     if (loading) {
       return (
         <View style={styles.emptyState}>
@@ -231,9 +289,9 @@ export default function DashboardScreen() {
         )}
       </View>
     );
-  };
+  }, [loading, hasFilters, clearAllFilters]);
 
-  const renderHeader = () => (
+  const renderHeader = useCallback(() => (
     <View>
       {/* Stats */}
       <View style={styles.statsRow}>
@@ -252,7 +310,7 @@ export default function DashboardScreen() {
             <Icon name="schedule" size={16} color={COLORS.warning} />
           </View>
           <Text style={[styles.cardValue, { color: COLORS.warning }]}>
-            {pendingCount}
+            {stats.pending}
           </Text>
           <Text style={styles.cardLabel}>PENDING</Text>
         </View>
@@ -264,7 +322,7 @@ export default function DashboardScreen() {
             <Icon name="check-circle" size={16} color={COLORS.success} />
           </View>
           <Text style={[styles.cardValue, { color: COLORS.success }]}>
-            {successCount}
+            {stats.success}
           </Text>
           <Text style={styles.cardLabel}>SUCCESS</Text>
         </View>
@@ -276,7 +334,7 @@ export default function DashboardScreen() {
             <Icon name="error-outline" size={16} color={COLORS.danger} />
           </View>
           <Text style={[styles.cardValue, { color: COLORS.danger }]}>
-            {failedCount}
+            {stats.failed}
           </Text>
           <Text style={styles.cardLabel}>FAILED</Text>
         </View>
@@ -400,9 +458,9 @@ export default function DashboardScreen() {
         )}
       </View>
     </View>
-  );
+  ), [messages, stats, search, searchFocused, statusFilter, hasFilters, clearAllFilters, devices, deviceFilter, filteredMessages.length, handleClearAll]);
 
-  const renderItem = ({ item }: { item: SmsItem }) => {
+  const renderItem = useCallback(({ item }: { item: SmsItem }) => {
     const meta = statusMeta(item.status);
     const contactName = getContactName(item.sender);
     const displayName = contactName || item.sender;
@@ -447,7 +505,7 @@ export default function DashboardScreen() {
         </View>
       </View>
     );
-  };
+  }, [handleDelete]);
 
   return (
     <View style={styles.container}>
@@ -531,6 +589,25 @@ export default function DashboardScreen() {
               style={styles.menuItem}
               onPress={() => {
                 setMenuVisible(false);
+                openBatterySettings();
+              }}
+            >
+              <View style={[styles.menuIconWrap, { backgroundColor: COLORS.primarySoft }]}>
+                <Icon name="battery-charging-full" size={20} color={COLORS.primary} />
+              </View>
+              <View style={styles.menuTextWrap}>
+                <Text style={styles.menuText}>Battery Settings</Text>
+                <Text style={styles.menuSubText}>
+                  Disable battery optimization for reliable background SMS forwarding
+                </Text>
+              </View>
+              <Icon name="chevron-right" size={22} color={COLORS.faint} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setMenuVisible(false);
                 handleClearAll();
               }}
             >
@@ -563,11 +640,8 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-
   headerButton: { marginRight: 16, padding: 4 },
-
   listContent: { paddingBottom: 32 },
-
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -590,7 +664,6 @@ const styles = StyleSheet.create({
       android: { elevation: 1.5 },
     }),
   },
-
   searchWrapActive: {
     borderColor: COLORS.primary,
     backgroundColor: "#FAFAFF",
@@ -602,7 +675,6 @@ const styles = StyleSheet.create({
       android: { elevation: 3 },
     }),
   },
-
   searchIconBadge: {
     width: 34,
     height: 34,
@@ -612,11 +684,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 10,
   },
-
   searchIconBadgeActive: {
     backgroundColor: COLORS.primary,
   },
-
   search: {
     flex: 1,
     fontSize: 14.5,
@@ -624,7 +694,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     paddingVertical: 0,
   },
-
   searchClearBtn: {
     width: 22,
     height: 22,
@@ -634,7 +703,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginLeft: 8,
   },
-
   statsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -658,18 +726,15 @@ const styles = StyleSheet.create({
       android: { elevation: 1 },
     }),
   },
-
   statCard: {
     flex: 1,
     alignItems: "center",
   },
-
   statDivider: {
     width: 1,
     height: 36,
     backgroundColor: COLORS.border,
   },
-
   statIconWrap: {
     width: 26,
     height: 26,
@@ -678,9 +743,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 6,
   },
-
   cardValue: { fontSize: 19, fontWeight: "800", color: COLORS.primary, letterSpacing: -0.3 },
-
   cardLabel: {
     marginTop: 3,
     color: COLORS.subtext,
@@ -688,7 +751,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.6,
   },
-
   filterRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -696,7 +758,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 14,
   },
-
   chip: {
     backgroundColor: COLORS.card,
     borderWidth: 1,
@@ -707,26 +768,18 @@ const styles = StyleSheet.create({
     marginRight: 8,
     marginBottom: 8,
   },
-
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-
   chipText: { color: COLORS.text, fontWeight: "600", fontSize: 13 },
-
   chipTextActive: { color: "#fff" },
-
   clearFiltersBtn: {
     flexDirection: "row",
     alignItems: "center",
     marginLeft: 4,
     marginBottom: 8,
   },
-
   clearFiltersText: { marginLeft: 4, color: COLORS.subtext, fontWeight: "600", fontSize: 13 },
-
   deviceFilterScroll: { marginTop: 2 },
-
   deviceFilterContent: { paddingHorizontal: 16, paddingBottom: 4 },
-
   deviceChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -738,13 +791,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-
   deviceChipActive: { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary },
-
   deviceChipText: { marginLeft: 6, color: COLORS.subtext, fontWeight: "600", fontSize: 13 },
-
   deviceChipTextActive: { color: COLORS.primary },
-
   listHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -753,15 +802,10 @@ const styles = StyleSheet.create({
     marginTop: 18,
     marginBottom: 8,
   },
-
   listHeaderTitle: { fontSize: 15, fontWeight: "700", color: COLORS.text },
-
   listHeaderCount: { color: COLORS.subtext, fontWeight: "500" },
-
   clearAllInlineText: { color: COLORS.danger, fontWeight: "600", fontSize: 13 },
-
   emptyState: { alignItems: "center", marginTop: 60, paddingHorizontal: 32 },
-
   emptyIconWrap: {
     width: 64,
     height: 64,
@@ -771,9 +815,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 12,
   },
-
   emptyStateTitle: { fontSize: 17, fontWeight: "700", color: COLORS.text, marginTop: 4 },
-
   emptyStateSubtitle: {
     fontSize: 13,
     color: COLORS.subtext,
@@ -781,7 +823,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 18,
   },
-
   emptyClearBtn: {
     marginTop: 14,
     paddingHorizontal: 16,
@@ -789,9 +830,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: COLORS.primarySoft,
   },
-
   emptyClearBtnText: { color: COLORS.primary, fontWeight: "700", fontSize: 13 },
-
   card: {
     backgroundColor: COLORS.card,
     marginHorizontal: 16,
@@ -810,11 +849,8 @@ const styles = StyleSheet.create({
       android: { elevation: 2 },
     }),
   },
-
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-
   senderRow: { flexDirection: "row", alignItems: "center", flexShrink: 1 },
-
   avatar: {
     width: 36,
     height: 36,
@@ -824,13 +860,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 10,
   },
-
   avatarText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-
   sender: { fontSize: 15, fontWeight: "700", color: COLORS.text },
-
   deviceTag: { fontSize: 11, color: COLORS.faint, marginTop: 1 },
-
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -838,19 +870,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-
   statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 5 },
-
   success: { backgroundColor: COLORS.successSoft },
-
   failed: { backgroundColor: COLORS.dangerSoft },
-
   pending: { backgroundColor: COLORS.warningSoft },
-
   statusText: { fontSize: 11, fontWeight: "700" },
-
   message: { marginTop: 12, fontSize: 14, color: COLORS.text, lineHeight: 20 },
-
   cardFooter: {
     marginTop: 12,
     flexDirection: "row",
@@ -860,20 +885,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
-
   time: { fontSize: 11, color: COLORS.faint },
-
   deleteButton: { flexDirection: "row", alignItems: "center" },
-
   deleteText: { color: COLORS.danger, fontWeight: "600", fontSize: 12, marginLeft: 4 },
-
-  // Bottom sheet modal
   modalOverlay: {
     flex: 1,
     backgroundColor: COLORS.overlay,
     justifyContent: "flex-end",
   },
-
   sheet: {
     backgroundColor: COLORS.card,
     borderTopLeftRadius: 24,
@@ -882,7 +901,6 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     width: "100%",
   },
-
   sheetHandle: {
     width: 40,
     height: 5,
@@ -891,7 +909,6 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: 14,
   },
-
   sheetTitle: {
     fontSize: 13,
     fontWeight: "700",
@@ -900,13 +917,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 8,
   },
-
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 12,
   },
-
   menuIconWrap: {
     width: 38,
     height: 38,
@@ -915,13 +930,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
-
   menuTextWrap: { flex: 1 },
-
   menuText: { fontSize: 15, fontWeight: "600", color: COLORS.text },
-
   menuSubText: { fontSize: 12, color: COLORS.subtext, marginTop: 2 },
-
   sheetCloseBtn: {
     marginTop: 8,
     paddingVertical: 14,
@@ -929,6 +940,5 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     alignItems: "center",
   },
-
   sheetCloseText: { fontSize: 15, fontWeight: "700", color: COLORS.text },
 });

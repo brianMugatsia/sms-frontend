@@ -1,5 +1,5 @@
 import Contacts from "react-native-contacts";
-import { PermissionsAndroid, Platform } from "react-native";
+import { AppState, PermissionsAndroid, Platform } from "react-native";
 
 const contactsMap = new Map<string, string>();
 
@@ -14,12 +14,37 @@ export async function loadContacts() {
     return;
   }
 
-  const permission = await PermissionsAndroid.request(
-    PermissionsAndroid.PERMISSIONS.READ_CONTACTS
-  );
+  let granted = false;
 
-  if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
-    console.log("READ_CONTACTS permission denied");
+  try {
+    // Check first — doesn't require an Activity, safe to call
+    // during headless/background JS restarts.
+    granted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.READ_CONTACTS
+    );
+
+    if (!granted) {
+      if (AppState.currentState === "active") {
+        // Only attempt the actual request dialog if we're in the
+        // foreground — requesting with no Activity attached throws
+        // E_INVALID_ACTIVITY.
+        const permission = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.READ_CONTACTS
+        );
+        granted = permission === PermissionsAndroid.RESULTS.GRANTED;
+      } else {
+        console.log(
+          "[CONTACTS] App not in foreground, skipping permission request"
+        );
+      }
+    }
+  } catch (error) {
+    console.error("Contacts permission check/request failed:", error);
+    return;
+  }
+
+  if (!granted) {
+    console.log("READ_CONTACTS permission denied or not yet grantable");
     return;
   }
 

@@ -4,36 +4,35 @@ import {
 } from "./networkService";
 
 import {
-  syncPendingSMS,
+  refreshSmsDashboard,
 } from "./syncService";
-
-import {
-  cleanupOldSMS,
-} from "./databaseService";
 
 let started = false;
 
+async function refreshDashboard() {
+  try {
+    await refreshSmsDashboard();
+  } catch (e) {
+    console.error("[SYNC] Dashboard refresh failed", e);
+  }
+}
+
 export const startQueueManager = async () => {
   if (started) {
-    console.log("[QUEUE] Already started");
+    console.log("[SYNC] Already started");
     return;
   }
 
   started = true;
 
-  console.log("[QUEUE] Starting Queue Manager");
+  console.log("[SYNC] Starting dashboard sync manager");
 
-  // Clean very old queued SMS
-  await cleanupOldSMS();
+  await refreshDashboard();
 
-  // Process any pending SMS from previous runs
-  await syncPendingSMS();
-
-  // Listen for internet recovery
   startNetworkListener(async () => {
-    console.log("[QUEUE] Internet restored");
+    console.log("[SYNC] Internet restored");
 
-    await syncPendingSMS();
+    await refreshDashboard();
   });
 };
 
@@ -44,5 +43,5 @@ export const stopQueueManager = () => {
 
   started = false;
 
-  console.log("[QUEUE] Stopped");
+  console.log("[SYNC] Stopped");
 };

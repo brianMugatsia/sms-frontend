@@ -1,11 +1,6 @@
 import { useEffect } from "react";
 
 import {
-  startSmsForwarding,
-  stopSmsForwarding,
-} from "../services/smsForwarder";
-
-import {
   startQueueManager,
   stopQueueManager,
 } from "../services/queueManager";
@@ -25,15 +20,11 @@ export default function SmsForwarder() {
 
       await startQueueManager();
 
-      await startSmsForwarding();
-
     };
 
     initialize();
 
     return () => {
-
-      stopSmsForwarding();
 
       stopQueueManager();
 

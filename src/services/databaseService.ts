@@ -2,69 +2,51 @@ import * as SQLite from "expo-sqlite";
 
 let db: SQLite.SQLiteDatabase | null = null;
 
-/**
- * ================================
- * SMS Model
- * ================================
- */
-export interface PendingSMS {
+export interface CachedSMS {
   id: string;
   sender: string;
   message: string;
   device_id: string;
   received_at: number;
-  retries: number;
-  synced: number;
-  created_at: number;
+  timestamp: string;
+  status: string;
+  forwarded: number;
+  response_code: number | null;
+  error: string | null;
+  cached_at: number;
 }
 
-/**
- * ================================
- * Open Database (Singleton)
- * ================================
- */
 export const getDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
   if (!db) {
     db = await SQLite.openDatabaseAsync("sms_forwarder.db");
   }
-
   return db;
 };
 
-/**
- * ================================
- * Initialize Database
- * ================================
- */
 export const initializeDatabase = async () => {
   try {
     const database = await getDatabase();
-
     await database.execAsync(`
       PRAGMA journal_mode = WAL;
       PRAGMA foreign_keys = ON;
 
-      CREATE TABLE IF NOT EXISTS pending_sms (
+      CREATE TABLE IF NOT EXISTS sms_cache (
           id TEXT PRIMARY KEY NOT NULL,
           sender TEXT NOT NULL,
           message TEXT NOT NULL,
           device_id TEXT NOT NULL,
           received_at INTEGER NOT NULL,
-          retries INTEGER NOT NULL DEFAULT 0,
-          synced INTEGER NOT NULL DEFAULT 0,
-          created_at INTEGER NOT NULL
+          timestamp TEXT NOT NULL,
+          status TEXT NOT NULL,
+          forwarded INTEGER NOT NULL DEFAULT 0,
+          response_code INTEGER,
+          error TEXT,
+          cached_at INTEGER NOT NULL
       );
 
-      CREATE INDEX IF NOT EXISTS idx_pending_sms_synced
-      ON pending_sms(synced);
-
-      CREATE INDEX IF NOT EXISTS idx_pending_sms_created
-      ON pending_sms(created_at);
-
-      CREATE INDEX IF NOT EXISTS idx_pending_sms_received
-      ON pending_sms(received_at);
+      CREATE INDEX IF NOT EXISTS idx_sms_cache_received
+      ON sms_cache(received_at);
     `);
-
     console.log("[DB] SQLite initialized");
   } catch (error) {
     console.error("[DB] Initialization failed:", error);
@@ -72,30 +54,27 @@ export const initializeDatabase = async () => {
   }
 };
 
-/**
- * ================================
- * Save SMS
- * ================================
- */
-export const saveSMS = async (
-  sms: PendingSMS
-): Promise<void> => {
+export const upsertCachedSMS = async (sms: CachedSMS): Promise<void> => {
   const database = await getDatabase();
-
   try {
     await database.runAsync(
       `
-      INSERT OR IGNORE INTO pending_sms (
-        id,
-        sender,
-        message,
-        device_id,
-        received_at,
-        retries,
-        synced,
-        created_at
+      INSERT INTO sms_cache (
+        id, sender, message, device_id, received_at,
+        timestamp, status, forwarded, response_code, error, cached_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        sender = excluded.sender,
+        message = excluded.message,
+        device_id = excluded.device_id,
+        received_at = excluded.received_at,
+        timestamp = excluded.timestamp,
+        status = excluded.status,
+        forwarded = excluded.forwarded,
+        response_code = excluded.response_code,
+        error = excluded.error,
+        cached_at = excluded.cached_at
       `,
       [
         sms.id,
@@ -103,138 +82,54 @@ export const saveSMS = async (
         sms.message,
         sms.device_id,
         sms.received_at,
-        sms.retries,
-        sms.synced,
-        sms.created_at,
+        sms.timestamp,
+        sms.status,
+        sms.forwarded,
+        sms.response_code,
+        sms.error,
+        sms.cached_at,
       ]
     );
-
-    console.log(`[DB] Saved SMS ${sms.id}`);
   } catch (error) {
-    console.error("[DB] Save failed:", error);
+    console.error(`[DB] Upsert failed for ${sms.id}:`, error);
     throw error;
   }
 };
 
-/**
- * ================================
- * Pending Queue
- * ================================
- */
-export const getPendingSMS = async (): Promise<PendingSMS[]> => {
-  const database = await getDatabase();
+export const upsertCachedSMSList = async (items: CachedSMS[]): Promise<void> => {
+  for (const item of items) {
+    await upsertCachedSMS(item);
+  }
+  console.log(`[DB] Cached ${items.length} SMS from backend`);
+};
 
+export const getCachedSMSList = async (): Promise<CachedSMS[]> => {
+  const database = await getDatabase();
   try {
-    return await database.getAllAsync<PendingSMS>(
+    return await database.getAllAsync<CachedSMS>(
       `
       SELECT *
-      FROM pending_sms
-      WHERE synced = 0
-      ORDER BY created_at ASC
+      FROM sms_cache
+      ORDER BY received_at DESC
       `
     );
   } catch (error) {
-    console.error("[DB] Fetch queue failed:", error);
+    console.error("[DB] Fetch cache failed:", error);
     return [];
   }
 };
 
-/**
- * ================================
- * Delete SMS
- * ================================
- */
-export const deleteSMS = async (
-  id: string
-): Promise<void> => {
+export const findCachedSMS = async (id: string): Promise<CachedSMS | null> => {
   const database = await getDatabase();
-
   try {
-    await database.runAsync(
+    const sms = await database.getFirstAsync<CachedSMS>(
       `
-      DELETE FROM pending_sms
+      SELECT *
+      FROM sms_cache
       WHERE id = ?
       `,
       [id]
     );
-
-    console.log(`[DB] Deleted ${id}`);
-  } catch (error) {
-    console.error("[DB] Delete failed:", error);
-    throw error;
-  }
-};
-
-/**
- * ================================
- * Retry Counter
- * ================================
- */
-export const increaseRetry = async (
-  id: string
-): Promise<void> => {
-  const database = await getDatabase();
-
-  try {
-    await database.runAsync(
-      `
-      UPDATE pending_sms
-      SET retries = retries + 1
-      WHERE id = ?
-      `,
-      [id]
-    );
-  } catch (error) {
-    console.error("[DB] Retry update failed:", error);
-  }
-};
-
-/**
- * ================================
- * Queue Size
- * ================================
- */
-export const getQueueSize = async (): Promise<number> => {
-  const database = await getDatabase();
-
-  try {
-    const result =
-      await database.getFirstAsync<{ count: number }>(
-        `
-        SELECT COUNT(*) AS count
-        FROM pending_sms
-        WHERE synced = 0
-        `
-      );
-
-    return result?.count ?? 0;
-  } catch (error) {
-    console.error("[DB] Count failed:", error);
-    return 0;
-  }
-};
-
-/**
- * ================================
- * Find SMS by ID
- * ================================
- */
-export const findSMS = async (
-  id: string
-): Promise<PendingSMS | null> => {
-  const database = await getDatabase();
-
-  try {
-    const sms =
-      await database.getFirstAsync<PendingSMS>(
-        `
-        SELECT *
-        FROM pending_sms
-        WHERE id = ?
-        `,
-        [id]
-      );
-
     return sms ?? null;
   } catch (error) {
     console.error("[DB] Lookup failed:", error);
@@ -242,48 +137,58 @@ export const findSMS = async (
   }
 };
 
-/**
- * ================================
- * Clear Queue
- * ================================
- */
-export const clearQueue = async (): Promise<void> => {
+export const getCacheSize = async (): Promise<number> => {
   const database = await getDatabase();
-
   try {
-    await database.runAsync(
+    const result = await database.getFirstAsync<{ count: number }>(
       `
-      DELETE FROM pending_sms
+      SELECT COUNT(*) AS count
+      FROM sms_cache
       `
     );
-
-    console.log("[DB] Queue cleared");
+    return result?.count ?? 0;
   } catch (error) {
-    console.error("[DB] Clear queue failed:", error);
+    console.error("[DB] Count failed:", error);
+    return 0;
   }
 };
 
-/**
- * Remove queued SMS older than X days.
- * These are assumed to be stale.
- */
-export const cleanupOldSMS = async (
-  days: number = 30
-) => {
-
+export const clearCache = async (): Promise<void> => {
   const database = await getDatabase();
+  try {
+    await database.runAsync(`DELETE FROM sms_cache`);
+    console.log("[DB] Cache cleared");
+  } catch (error) {
+    console.error("[DB] Clear cache failed:", error);
+  }
+};
 
-  const cutoff =
-    Date.now() -
-    days * 24 * 60 * 60 * 1000;
-
+export const cleanupOldCachedSMS = async (days: number = 30) => {
+  const database = await getDatabase();
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   await database.runAsync(
     `
-    DELETE FROM pending_sms
-    WHERE created_at < ?
+    DELETE FROM sms_cache
+    WHERE received_at < ?
     `,
     [cutoff]
   );
+  console.log("[DB] Old cached SMS cleaned");
+};
 
-  console.log("[DB] Old SMS cleaned");
+export const deleteCachedSMS = async (id: string): Promise<void> => {
+  const database = await getDatabase();
+  try {
+    await database.runAsync(
+      `
+      DELETE FROM sms_cache
+      WHERE id = ?
+      `,
+      [id]
+    );
+    console.log(`[DB] Deleted cached SMS with ID: ${id}`);
+  } catch (error) {
+    console.error(`[DB] Failed to delete cached SMS ${id}:`, error);
+    throw error;
+  }
 };

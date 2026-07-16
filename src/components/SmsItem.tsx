@@ -103,7 +103,7 @@ export default function SmsItem({
 
           {contactName && (
             <Text style={styles.phone}>
-              {sms.sender}
+              Sender: {sms.sender}
             </Text>
           )}
 
@@ -258,8 +258,9 @@ const styles = StyleSheet.create({
 
   phone: {
     marginTop: 2,
-    fontSize: 13,
-    color: "#666",
+    fontSize: 12,
+    color: "#888",
+    fontStyle: "italic",
   },
 
   time: {

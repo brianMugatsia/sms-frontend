@@ -1,117 +1,126 @@
-import { PermissionsAndroid, Platform } from "react-native";
-import SmsListener from "react-native-android-sms-listener";
+import { AppState, PermissionsAndroid, Platform } from "react-native";
 import DeviceInfo from "react-native-device-info";
-import { enqueueSMS } from "./smsQueueService";
-import { monitorQueue } from "./monitorService";
-import { syncPendingSMS } from "./syncService";
-import { shouldForward } from "./filterService";
 
-let smsSubscription: any = null;
+let deviceName = "Android Device";
 
-export const requestSmsPermissions = async (): Promise<boolean> => {
-  if (Platform.OS !== "android") {
-    console.log("Not an Android device");
+/**
+ * Check (not request) current SMS permission status.
+ * Safe to call with no Activity attached (background/headless JS restarts).
+ */
+export const checkSmsPermissions = async (): Promise<boolean> => {
+  if (Platform.OS !== "android") return false;
+
+  try {
+    const receiveGranted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.RECEIVE_SMS
+    );
+    const readGranted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.READ_SMS
+    );
+
+    // On Android 13+ (API 33), check notifications too if your background worker displays them
+    let notificationGranted = true;
+    if (Platform.Version >= 33 && PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS) {
+      notificationGranted = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+      );
+    }
+
+    return receiveGranted && readGranted && notificationGranted;
+  } catch (error) {
+    console.error("Permission check failed:", error);
     return false;
+  }
+};
+
+/**
+ * Request SMS permissions. Only call this when the app is in the
+ * foreground (Activity attached) — otherwise it throws E_INVALID_ACTIVITY.
+ */
+export const requestSmsPermissions = async (): Promise<boolean> => {
+  if (Platform.OS !== "android") return false;
+
+  // Guard: requestMultiple needs a live Activity. If we're not in the
+  // foreground (e.g. JS restarted headlessly by the foreground service),
+  // fall back to a check instead of crashing init.
+  if (AppState.currentState !== "active") {
+    console.warn(
+      "[PERMISSIONS] App not in foreground, skipping request — using check instead"
+    );
+    return checkSmsPermissions();
   }
 
   try {
-    console.log("Requesting SMS permissions...");
+    console.log("========== REQUESTING SMS PERMISSIONS ==========");
 
-    const permissions = await PermissionsAndroid.requestMultiple([
+    const permissionsToRequest = [
       PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
       PermissionsAndroid.PERMISSIONS.READ_SMS,
-    ]);
+    ];
 
-    console.log("Permissions:", permissions);
+    // Push Notification permission mandatory for background persistence on API 33+
+    if (Platform.Version >= 33 && PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS) {
+      permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+    }
 
-    return (
-      permissions[PermissionsAndroid.PERMISSIONS.RECEIVE_SMS] ===
-        PermissionsAndroid.RESULTS.GRANTED &&
-      permissions[PermissionsAndroid.PERMISSIONS.READ_SMS] ===
-        PermissionsAndroid.RESULTS.GRANTED
-    );
-  } catch (error) {
-    console.error("Permission request failed:", error);
-    return false;
-  }
-};
+    const permissions = await PermissionsAndroid.requestMultiple(permissionsToRequest);
 
-export const startSmsForwarding = async () => {
-  console.log("========== STARTING SMS FORWARDER ==========");
+    console.log("Permissions status result:", permissions);
 
-  // Prevent duplicate listeners
-  if (smsSubscription) {
-    console.log("SMS listener already running");
-    return smsSubscription;
-  }
+    const smsGranted =
+      permissions[PermissionsAndroid.PERMISSIONS.RECEIVE_SMS] === PermissionsAndroid.RESULTS.GRANTED &&
+      permissions[PermissionsAndroid.PERMISSIONS.READ_SMS] === PermissionsAndroid.RESULTS.GRANTED;
 
-  const granted = await requestSmsPermissions();
-
-  if (!granted) {
-    console.warn("SMS permissions denied");
-    return null;
-  }
-
-  let deviceName = "Android Device";
-
-  try {
-    deviceName = await DeviceInfo.getDeviceName();
-  } catch (error) {
-    console.warn("Unable to obtain device name");
-  }
-
-  console.log("Device:", deviceName);
-
-  console.log("Registering SMS listener...");
-
-  smsSubscription = SmsListener.addListener(async (message) => {
-    console.log("========== SMS RECEIVED ==========");
-    console.log(message);
-
-    const sender = message.originatingAddress ?? "Unknown";
-    const body = message.body ?? "";
+    if (!smsGranted) {
+      console.warn("Core SMS permissions denied");
+      return false;
+    }
 
     try {
-      const allowed = await shouldForward({
-        sender,
-
-      });
-
-      if (!allowed) {
-        console.log("SMS blocked by forwarding rules");
-        return;
-      }
-
-      console.log("Queueing SMS...");
-
-      await enqueueSMS({
-        sender,
-        message: body,
-        device_id: deviceName,
-      });
-      await monitorQueue();
-
-      console.log("SMS queued successfully");
-
-      await syncPendingSMS();
-    } catch (error) {
-      console.error("Forwarding failed:", error);
+      deviceName = await DeviceInfo.getDeviceName();
+    } catch {
+      deviceName = "Android Device";
     }
-  });
 
-  console.log("SMS listener registered successfully");
-
-  return smsSubscription;
-};
-
-export const stopSmsForwarding = () => {
-  try {
-    if (smsSubscription) {
-      smsSubscription.remove();
-      smsSubscription = null;
-      console.log("SMS forwarding stopped");
-    }
+    console.log("Device profile assigned:", deviceName);
+    return true;
   } catch (error) {
-    console.error("Error stopping listener:", error);
+    console.error("Permission request failed, falling back to check:", error);
+    return checkSmsPermissions();
   }
 };
+
+/**
+ * Initializes SMS forwarding.
+ */
+export const startSmsForwarding = async () => {
+  console.log("========== SMS FORWARDING INITIALIZED ==========");
+
+  const alreadyGranted = await checkSmsPermissions();
+  const granted = alreadyGranted || (await requestSmsPermissions());
+
+  if (!granted) {
+    console.warn(
+      "SMS permissions incomplete — dashboard init limited, but native SmsReceiver may still work if previously handled at OS level."
+    );
+    return false;
+  }
+
+  console.log(
+    "Native WorkManager engine hooked. Worker pipeline safe even if JS engine tears down."
+  );
+
+  return true;
+};
+
+/**
+ * Nothing to stop.
+ */
+export const stopSmsForwarding = () => {
+  console.log("SMS forwarding cleanup (no JS listener tied to component lifecycle)");
+};
+
+/**
+ * Returns the cached device name if needed elsewhere.
+ */
+export const getDeviceName = () => deviceName;

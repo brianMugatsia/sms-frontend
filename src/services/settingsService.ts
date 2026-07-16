@@ -12,10 +12,10 @@ export const defaultSettings: ForwardingSettings = {
   keywords: [],
 
   // User storage endpoint
-  storageEndpoint: "",
+  storage_endpoint: "",
 
   // Optional API key
-  storageApiKey: "",
+  storage_api_key: "",
 };
 
 /**
@@ -29,9 +29,15 @@ export async function loadSettings(): Promise<ForwardingSettings> {
       return defaultSettings;
     }
 
+    const parsed = JSON.parse(value);
+
+    // Backward compatibility helper: if someone updated via legacy camelCase keys,
+    // map them cleanly over to snake_case.
     return {
       ...defaultSettings,
-      ...JSON.parse(value),
+      ...parsed,
+      storage_endpoint: parsed.storage_endpoint ?? parsed.storageEndpoint ?? defaultSettings.storage_endpoint,
+      storage_api_key: parsed.storage_api_key ?? parsed.storageApiKey ?? defaultSettings.storage_api_key,
     };
   } catch (error) {
     console.error("Failed loading settings:", error);
@@ -46,9 +52,20 @@ export async function saveSettings(
   settings: ForwardingSettings
 ): Promise<void> {
   try {
+    // Normalizes back into explicit snake_case layout to match api.ts
+    const normalizedSettings = {
+      ...settings,
+      storage_endpoint: settings.storage_endpoint ?? (settings as any).storageEndpoint,
+      storage_api_key: settings.storage_api_key ?? (settings as any).storageApiKey,
+    };
+
+    // Strip legacy camelCase keys if present to prevent AsyncStorage bloat
+    delete (normalizedSettings as any).storageEndpoint;
+    delete (normalizedSettings as any).storageApiKey;
+
     await AsyncStorage.setItem(
       SETTINGS_KEY,
-      JSON.stringify(settings)
+      JSON.stringify(normalizedSettings)
     );
   } catch (error) {
     console.error("Failed saving settings:", error);
@@ -59,13 +76,13 @@ export async function saveSettings(
  * Update endpoint only
  */
 export async function updateEndpoint(
-  storageEndpoint: string,
-  storageApiKey = ""
+  storage_endpoint: string,
+  storage_api_key = ""
 ): Promise<void> {
   const settings = await loadSettings();
 
-  settings.storageEndpoint = storageEndpoint;
-  settings.storageApiKey = storageApiKey;
+  settings.storage_endpoint = storage_endpoint;
+  settings.storage_api_key = storage_api_key;
 
   await saveSettings(settings);
 }

@@ -1,15 +1,16 @@
-import { NativeModules, Platform } from 'react-native';
-import { Linking } from 'react-native';
+import { Linking, Platform } from "react-native";
 
-export const requestBatteryOptimizationExemption = async () => {
-  if (Platform.OS !== 'android') return;
+/**
+ * Opens the app's own settings page so the user can manually
+ * disable battery optimization if they choose to. This is the
+ * Play Store-safe approach — no special permission required.
+ */
+export const openBatterySettings = async () => {
+  if (Platform.OS !== "android") return;
 
-  // This opens the system settings screen where the user can
-  // manually exempt your app — there's no fully silent API call
-  // for this without a native module, so we deep-link to settings.
   try {
-    await Linking.sendIntent('android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS');
+    await Linking.openSettings();
   } catch (e) {
-    console.warn('Could not open battery optimization settings', e);
+    console.warn("Could not open app settings", e);
   }
 };
