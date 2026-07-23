@@ -16,7 +16,23 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 
-# Native
+# Native - Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/*.keystore
+android/app/*.keystore
+*.hprof
+
+# Native - iOS
+ios/build/
+ios/Pods/
+ios/Podfile.lock
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
+
+# Native - shared
 .kotlin/
 *.orig.*
 *.jks
@@ -30,19 +46,18 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-# macOS
+# macOS / Windows
 .DS_Store
 *.pem
+Thumbs.db
 
-# local env files
-.env*.local
+# Environment variables (secrets - do not commit)
+.env
+.env.local
+.env.*.local
 
 # typescript
 *.tsbuildinfo
-
-# generated native folders
-/ios
-/android
 
 # IDE/editor
 .vscode/
@@ -71,6 +86,11 @@ venv/
 env/
 .venv/
 
+# Environment variables (secrets - do not commit)
+.env
+.env.local
+.env.*.local
+
 # Logs
 *.log
 
@@ -82,6 +102,5 @@ env/
 .coverage
 htmlcov/
 .pytest_cache/
-
-# OS files
-Thumbs.db
+.mypy_cache/
+.ruff_cache/
