@@ -20,6 +20,9 @@ expo-env.d.ts
 android/.gradle/
 android/build/
 android/app/build/
+android/app/.cxx/
+android/app/.externalNativeBuild/
+android/.cxx/
 android/local.properties
 android/*.keystore
 android/app/*.keystore
@@ -104,8 +107,3 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-
-
-android/app/.cxx/
-android/app/.externalNativeBuild/
-android/.cxx/
