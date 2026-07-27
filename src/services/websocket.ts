@@ -1,14 +1,12 @@
+import { getDeviceId } from "./deviceService";
+
 let ws: WebSocket | null = null;
-
 let heartbeat: ReturnType<typeof setInterval> | null = null;
-
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-
 let retryCount = 0;
-
 const MAX_RETRIES = 10;
 
-export const connectWebSocket = (
+export const connectWebSocket = async (
   onMessage: (data: any) => void
 ) => {
 
@@ -23,8 +21,22 @@ export const connectWebSocket = (
     return;
   }
 
+  const deviceId = await getDeviceId();
+
+  if (!deviceId || deviceId === "unknown-device") {
+    console.log("WS connect skipped: no valid device_id yet");
+    // Retry shortly rather than opening a doomed connection
+    if (!reconnectTimeout) {
+      reconnectTimeout = setTimeout(() => {
+        reconnectTimeout = null;
+        connectWebSocket(onMessage);
+      }, 2000);
+    }
+    return;
+  }
+
   ws = new WebSocket(
-    "wss://sms-backend-w6d5.onrender.com/ws/sms"
+    `wss://sms-backend-w6d5.onrender.com/ws/sms?device_id=${encodeURIComponent(deviceId)}`
   );
 
   ws.onopen = () => {

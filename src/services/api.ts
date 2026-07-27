@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from "axios";
+import { getDeviceId } from "./deviceService";
 
 // ======================================================
 // BACKEND
@@ -85,34 +86,42 @@ export interface SmsPayload {
   sender: string;
   message: string;
   received_at?: number;
+  device_id?: string;
 }
 
 export const forwardSms = async (sms: SmsPayload) => {
-  console.log("Forwarding SMS:", sms);
-  const response = await api.post("/sms/forward", sms);
+  const device_id = sms.device_id ?? (await getDeviceId());
+  const payload = { ...sms, device_id };
+  console.log("Forwarding SMS:", payload);
+  const response = await api.post("/sms/forward", payload);
   return response.data;
 };
 
 /**
- * UPDATED: Pointing to the flat root endpoint matching your single cache
+ * Now scoped to this device only - device_id is required by the
+ * backend so each dashboard only ever sees its own messages.
  */
 export const listSms = async () => {
-  const response = await api.get("/sms/");
+  const device_id = await getDeviceId();
+  const response = await api.get("/sms/", { params: { device_id } });
   return response.data;
 };
 
 export const getSms = async (id: string) => {
-  const response = await api.get(`/sms/${id}`);
+  const device_id = await getDeviceId();
+  const response = await api.get(`/sms/${id}`, { params: { device_id } });
   return response.data;
 };
 
 export const deleteSms = async (id: string) => {
-  const response = await api.delete(`/sms/${id}`);
+  const device_id = await getDeviceId();
+  const response = await api.delete(`/sms/${id}`, { params: { device_id } });
   return response.data;
 };
 
 export const clearSms = async () => {
-  const response = await api.delete("/sms");
+  const device_id = await getDeviceId();
+  const response = await api.delete("/sms", { params: { device_id } });
   return response.data;
 };
 
