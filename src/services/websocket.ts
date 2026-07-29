@@ -36,7 +36,7 @@ export const connectWebSocket = async (
   }
 
   ws = new WebSocket(
-    `wss://sms-backend-w6d5.onrender.com/ws/sms?device_id=${encodeURIComponent(deviceId)}`
+    `wss://smsapi.roberms.com/ws/sms?device_id=${encodeURIComponent(deviceId)}`
   );
 
   ws.onopen = () => {

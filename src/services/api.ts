@@ -1,24 +1,21 @@
 import axios, { AxiosInstance } from "axios";
 import { getDeviceId } from "./deviceService";
 
-// ======================================================
+
 // BACKEND
-// ======================================================
 
-const BASE_URL = "https://sms-backend-w6d5.onrender.com/api";
+const BASE_URL = "https://smsapi.roberms.com/api";
 
-// ======================================================
+
 // AXIOS
-// ======================================================
 
 const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   timeout: 60000,
 });
 
-// ======================================================
+
 // REQUEST LOGGER
-// ======================================================
 
 api.interceptors.request.use(
   (config) => {
@@ -28,9 +25,8 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ======================================================
+
 // SETTINGS (Updated to match Single-Instance backend fields)
-// ======================================================
 
 export interface Settings {
   storage_endpoint: string;
@@ -77,9 +73,8 @@ export const testConnection = async (
   return response.data;
 };
 
-// ======================================================
-// SMS (Flattened and Cleaned)
-// ======================================================
+
+// SMS FORWARDING / LOG MANAGEMENT
 
 export interface SmsPayload {
   id?: string;
@@ -97,10 +92,6 @@ export const forwardSms = async (sms: SmsPayload) => {
   return response.data;
 };
 
-/**
- * Now scoped to this device only - device_id is required by the
- * backend so each dashboard only ever sees its own messages.
- */
 export const listSms = async () => {
   const device_id = await getDeviceId();
   const response = await api.get("/sms/", { params: { device_id } });
@@ -125,9 +116,8 @@ export const clearSms = async () => {
   return response.data;
 };
 
-// ======================================================
+
 // HEALTH
-// ======================================================
 
 export const pingServer = async () => {
   const response = await api.get("/health");
