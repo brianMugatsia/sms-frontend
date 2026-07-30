@@ -11,6 +11,7 @@ import SmsForwarder from "./src/components/SmsForwarder";
 
 import { initializeDatabase } from "./src/services/databaseService";
 import { loadContacts } from "./src/services/contactService";
+import { fetchAndSyncAppConfig } from "./src/services/configService";
 
 // ============================================================
 // Foreground Service Registration
@@ -33,8 +34,6 @@ export default function App() {
         if (Platform.OS === "android") {
           console.log("[APP] Requesting runtime permissions...");
 
-          // Check first — this never requires an Activity, so it's
-          // always safe, including during headless/background JS restarts.
           const alreadyGranted = await PermissionsAndroid.check(
             PermissionsAndroid.PERMISSIONS.RECEIVE_SMS
           );
@@ -42,9 +41,6 @@ export default function App() {
           if (alreadyGranted) {
             console.log("[APP] SMS runtime permission already granted");
           } else if (AppState.currentState === "active") {
-            // Only show the request dialog if we know there's a live
-            // Activity in the foreground — otherwise this throws
-            // E_INVALID_ACTIVITY.
             const granted = await PermissionsAndroid.request(
               PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
               {
@@ -68,7 +64,13 @@ export default function App() {
           }
         }
 
-        // 2. Initialize local database and contacts
+        // 2. Fetch remote config (backend URL) and sync to native SharedPreferences
+        // This runs before database/contacts init so the native forwarding
+        // pipeline always has the freshest backend URL as early as possible.
+        console.log("[APP] Fetching remote config...");
+        await fetchAndSyncAppConfig();
+
+        // 3. Initialize local database and contacts
         await initializeDatabase();
         await loadContacts();
 

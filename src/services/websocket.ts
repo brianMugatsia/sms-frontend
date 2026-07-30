@@ -1,4 +1,5 @@
 import { getDeviceId } from "./deviceService";
+import { getApiBaseUrl } from "./configService";
 
 let ws: WebSocket | null = null;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -25,7 +26,6 @@ export const connectWebSocket = async (
 
   if (!deviceId || deviceId === "unknown-device") {
     console.log("WS connect skipped: no valid device_id yet");
-    // Retry shortly rather than opening a doomed connection
     if (!reconnectTimeout) {
       reconnectTimeout = setTimeout(() => {
         reconnectTimeout = null;
@@ -35,8 +35,13 @@ export const connectWebSocket = async (
     return;
   }
 
+  // Derive wss:// from whatever the resolved base URL's scheme is (http -> ws, https -> wss)
+  const baseUrl = getApiBaseUrl();
+  const wsScheme = baseUrl.startsWith("https") ? "wss" : "ws";
+  const host = baseUrl.replace(/^https?:\/\//, "");
+
   ws = new WebSocket(
-    `wss://smsapi.roberms.com/ws/sms?device_id=${encodeURIComponent(deviceId)}`
+    `${wsScheme}://${host}/ws/sms?device_id=${encodeURIComponent(deviceId)}`
   );
 
   ws.onopen = () => {
@@ -69,13 +74,20 @@ export const connectWebSocket = async (
 
     try {
 
-      const message = JSON.parse(event.data);
+      const parsed = JSON.parse(event.data);
 
-      if (message.type === "pong") {
+      if (parsed.type === "pong") {
         return;
       }
 
-      onMessage(message);
+      const payload = parsed.data ?? parsed;
+
+      if (!payload || payload.id == null) {
+        console.log("[WS] Ignoring message with no id:", parsed);
+        return;
+      }
+
+      onMessage(payload);
 
     } catch (e) {
 

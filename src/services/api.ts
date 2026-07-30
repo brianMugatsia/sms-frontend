@@ -1,30 +1,23 @@
 import axios, { AxiosInstance } from "axios";
 import { getDeviceId } from "./deviceService";
-
-
-// BACKEND
-
-const BASE_URL = "https://smsapi.roberms.com/api";
-
+import { getApiBaseUrl } from "./configService";
 
 // AXIOS
 
 const api: AxiosInstance = axios.create({
-  baseURL: BASE_URL,
   timeout: 60000,
 });
 
-
-// REQUEST LOGGER
-
+// Keep axios's baseURL in sync with the resolved config.
+// Safe to call multiple times; cheap operation.
 api.interceptors.request.use(
   (config) => {
+    config.baseURL = `${getApiBaseUrl()}/api`;
     console.log(`${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
     return config;
   },
   (error) => Promise.reject(error)
 );
-
 
 // SETTINGS (Updated to match Single-Instance backend fields)
 
@@ -47,32 +40,22 @@ export interface EndpointTestResponse {
   status_code?: number | null;
 }
 
-/**
- * Load current flat system settings
- */
 export const getSettings = async () => {
   const response = await api.get("/settings");
   return response.data as Settings;
 };
 
-/**
- * Save unified system settings
- */
 export const saveSettings = async (settings: Settings) => {
   const response = await api.put("/settings", settings);
   return response.data as Settings;
 };
 
-/**
- * Test storage endpoint connection
- */
 export const testConnection = async (
   data: EndpointTestRequest
 ): Promise<EndpointTestResponse> => {
   const response = await api.post("/settings/test", data);
   return response.data;
 };
-
 
 // SMS FORWARDING / LOG MANAGEMENT
 
@@ -115,7 +98,6 @@ export const clearSms = async () => {
   const response = await api.delete("/sms", { params: { device_id } });
   return response.data;
 };
-
 
 // HEALTH
 

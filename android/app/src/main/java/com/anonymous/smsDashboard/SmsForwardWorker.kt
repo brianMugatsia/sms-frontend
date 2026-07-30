@@ -15,6 +15,8 @@ class SmsForwardWorker(private val appContext: Context, params: WorkerParameters
 
     companion object {
         private const val TAG = "SmsForwardWorker"
+        private const val PREFS_NAME = "forwarding_prefs"
+        private const val DEFAULT_BASE_URL = "https://smsapi.roberms.com"
     }
 
     override suspend fun doWork(): Result {
@@ -25,16 +27,22 @@ class SmsForwardWorker(private val appContext: Context, params: WorkerParameters
         val deviceId = Secure.getString(appContext.contentResolver, Secure.ANDROID_ID) ?: "unknown-device"
         val smsId = inputData.getString("smsId") ?: UUID.randomUUID().toString()
 
-        Log.d(TAG, "doWork started, attempt=$runAttemptCount sender=$sender device=$deviceId id=$smsId")
+        // Read the current backend URL from SharedPreferences, which is kept
+        // up to date by configService.ts via SettingsBridgeModule.setApiBaseUrl().
+        // Falls back to DEFAULT_BASE_URL if the app hasn't synced one yet
+        // (e.g. very first install before the app has opened even once).
+        val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val baseUrl = prefs.getString("api_base_url", DEFAULT_BASE_URL) ?: DEFAULT_BASE_URL
+
+        Log.d(TAG, "doWork started, attempt=$runAttemptCount sender=$sender device=$deviceId id=$smsId baseUrl=$baseUrl")
 
         return try {
-            val url = URL("https://sms-backend-w6d5.onrender.com/api/sms/forward")
+            val url = URL("$baseUrl/api/sms/forward")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
             conn.doOutput = true
 
-            // UPDATE: Increased from 15000 to 60000 ms to handle Render free tier cold starts
             conn.connectTimeout = 60000
             conn.readTimeout = 60000
 

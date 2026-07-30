@@ -42,4 +42,23 @@ class SettingsBridgeModule(reactContext: ReactApplicationContext) :
             promise.reject("SYNC_FAILED", e.message, e)
         }
     }
+
+    @ReactMethod
+    fun setApiBaseUrl(
+        baseUrl: String,
+        promise: Promise
+    ) {
+        try {
+            val prefs = reactApplicationContext
+                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+            prefs.edit()
+                .putString("api_base_url", baseUrl)
+                .apply()
+
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("SET_URL_FAILED", e.message, e)
+        }
+    }
 }
